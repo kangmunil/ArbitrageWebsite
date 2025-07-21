@@ -1,9 +1,9 @@
 
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DECIMAL, DATETIME, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, Integer, String, Boolean, DECIMAL, DATETIME, ForeignKey
 from sqlalchemy.orm import relationship
 
-Base = declarative_base()
+# Reuse the Base from the database module so all models share the same metadata
+from .database import Base
 
 class Exchange(Base):
     __tablename__ = 'exchanges'
