@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+PyMySQL
+cryptography
+requests
+websockets
+beautifulsoup4
+lxml

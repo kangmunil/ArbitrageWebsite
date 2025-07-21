@@ -1,0 +1,160 @@
+.App {
+  text-align: center;
+  background-color: #282c34; /* 전체 배경색 */
+  color: white; /* 기본 텍스트 색상 */
+  min-height: 100vh; /* 최소 높이 설정 */
+}
+
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
+  }
+}
+
+.App-main {
+  padding: 20px;
+}
+
+.App-layout-container {
+  display: flex;
+  gap: 20px; /* 구역 사이의 간격 */
+}
+
+.App-sidebar {
+  flex: 3; /* 왼쪽 구역 (30%) */
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.App-content {
+  flex: 7; /* 가운데 구역 (70%) */
+}
+
+.App-section {
+  padding: 20px;
+  border: 1px solid #444; /* 섹션 구분선 */
+  border-radius: 8px;
+  background-color: #1a1a1a; /* 섹션 배경색 */
+}
+
+.App-section h2 {
+  color: #61dafb; /* 섹션 제목 색상 */
+  margin-bottom: 20px;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+@keyframes App-logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.premium-plus {
+  color: #d9534f; /* Red for positive premium */
+}
+
+.premium-minus {
+  color: #5cb85c; /* Green for negative premium */
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+th, td {
+  border: 1px solid #444;
+  padding: 10px;
+  text-align: left;
+  /* Add fixed width for each column */
+  /* Adjust these percentages based on your content */
+  width: 16.66%; /* Example: 6 columns, so 100% / 6 */
+}
+
+/* More specific width for symbol column if needed */
+th:nth-child(1), td:nth-child(1) {
+  width: 10%; /* Symbol */
+}
+
+th:nth-child(2), td:nth-child(2) {
+  width: 20%; /* Domestic Price */
+}
+
+th:nth-child(3), td:nth-child(3) {
+  width: 20%; /* Global Price */
+}
+
+th:nth-child(4), td:nth-child(4) {
+  width: 20%; /* Global Volume */
+}
+
+th:nth-child(5), td:nth-child(5) {
+  width: 15%; /* Global Change */
+}
+
+th:nth-child(6), td:nth-child(6) {
+  width: 15%; /* Kimchi Premium */
+}
+
+th {
+  background-color: #333;
+  color: #61dafb;
+  cursor: pointer; /* Add cursor for sortable headers */
+}
+
+tbody tr:nth-child(even) {
+  background-color: #222;
+}
+
+tbody tr:hover {
+  background-color: #3a3a3a;
+}
+
+.coin-table-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap; /* Allow wrapping on smaller screens */
+  gap: 10px; /* Space between items */
+}
+
+.exchange-selection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.exchange-selection label {
+  white-space: nowrap; /* Prevent label from wrapping */
+}
+
+.exchange-selection select {
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background-color: #333;
+  color: white;
+}
+
+.search-input {
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background-color: #333;
+  color: white;
+  width: 150px; /* Half the original width (300px) */
+}

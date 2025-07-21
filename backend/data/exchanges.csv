@@ -1,0 +1,5 @@
+exchange_id,name,country,is_korean,site_url,api_url,logo_url,is_active
+upbit,업비트,KR,TRUE,https://upbit.com,https://api.upbit.com,https://upbit.com/logo.png,TRUE
+binance,바이낸스,US,FALSE,https://www.binance.com,https://api.binance.com,https://www.binance.com/logo.png,TRUE
+bithumb,빗썸,KR,TRUE,https://www.bithumb.com,https://api.bithumb.com,https://www.bithumb.com/logo.png,TRUE
+bybit,바이비트,AE,FALSE,https://www.bybit.com,https://api.bybit.com,https://www.bybit.com/logo.png,TRUE

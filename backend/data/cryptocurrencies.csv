@@ -1,0 +1,5 @@
+crypto_id,symbol,name_ko,name_en,logo_url,is_active
+bitcoin,BTC,비트코인,Bitcoin,https://coin.com/btc.png,TRUE
+ethereum,ETH,이더리움,Ethereum,https://coin.com/eth.png,TRUE
+ripple,XRP,리플,Ripple,https://coin.com/xrp.png,TRUE
+solana,SOL,솔라나,Solana,https://coin.com/sol.png,TRUE

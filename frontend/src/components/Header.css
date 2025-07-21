@@ -1,0 +1,31 @@
+/* frontend/src/components/Header.css */
+.App-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 20px; /* 패딩을 줄여 헤더 높이 감소 */
+  background-color: #282c34;
+  color: white;
+  border-bottom: 1px solid #444;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.App-logo {
+  height: 30px; /* 로고 크기 더 작게 조정 */
+  margin-right: 10px;
+}
+
+.header-right .nav-link {
+  color: #61dafb;
+  text-decoration: none;
+  margin-left: 20px;
+  font-size: 1.0em; /* 폰트 크기 약간 줄임 */
+}
+
+.header-right .nav-link:hover {
+  text-decoration: underline;
+}
