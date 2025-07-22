@@ -7,3 +7,4 @@ requests
 websockets
 beautifulsoup4
 lxml
+aiohttp

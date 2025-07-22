@@ -1,10 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import GaugeChart from 'react-gauge-chart';
 
+/**
+ * 암호화폐 공포/탐욕 지수 컴포넌트.
+ * 
+ * Alternative.me API를 통해 암호화폐 시장의 감정 지수를 가져와
+ * 게이지 차트로 시각화합니다. 0~100 점수로 표시됩니다.
+ * 
+ * @returns {JSX.Element} 공포탐욕 지수 게이지 UI
+ */
 function FearGreedIndex() {
-  const [indexData, setIndexData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [indexData, setIndexData] = useState(null); // 공포탐욕 지수 데이터
+  const [loading, setLoading] = useState(true); // 데이터 로딩 상태
+  const [error, setError] = useState(null); // 에러 상태
 
   useEffect(() => {
     const fetchFearGreedIndex = async () => {

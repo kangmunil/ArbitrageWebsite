@@ -1,6 +1,21 @@
 import React, { useState, useMemo } from 'react';
 
+/**
+ * 코인 가격 비교 테이블 컴포넌트.
+ * 
+ * 국내외 거래소 가격을 비교하여 김치 프리미엄을 계산하고 표시합니다.
+ * 거래소 선택, 검색, 정렬 기능을 제공합니다.
+ * 
+ * @param {Object} props - 컴포넌트 props
+ * @param {Array} props.allCoinsData - 모든 코인의 가격 데이터 배열
+ * @param {string} props.selectedDomesticExchange - 선택된 국내 거래소
+ * @param {Function} props.setSelectedDomesticExchange - 국내 거래소 선택 변경 함수
+ * @param {string} props.selectedGlobalExchange - 선택된 해외 거래소
+ * @param {Function} props.setSelectedGlobalExchange - 해외 거래소 선택 변경 함수
+ * @returns {JSX.Element} 코인 테이블 UI
+ */
 function CoinTable({ allCoinsData, selectedDomesticExchange, setSelectedDomesticExchange, selectedGlobalExchange, setSelectedGlobalExchange }) {
+  // 거래소 코드에서 표시명으로의 매핑
   const exchangeDisplayNames = {
     upbit: 'Upbit',
     bithumb: 'Bithumb',
@@ -10,17 +25,19 @@ function CoinTable({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
     gateio: 'Gate.io',
     mexc: 'MEXC',
   };
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortColumn, setSortColumn] = useState(null);
-  const [sortDirection, setSortDirection] = useState('asc');
+  const [searchTerm, setSearchTerm] = useState(''); // 검색어 상태
+  const [sortColumn, setSortColumn] = useState(null); // 정렬 대상 열
+  const [sortDirection, setSortDirection] = useState('asc'); // 정렬 방향 (asc/desc)
 
   const filteredAndSortedData = useMemo(() => {
+    console.log('CoinTable received allCoinsData:', allCoinsData);
     if (!allCoinsData || allCoinsData.length === 0) {
+      console.log('No coin data available');
       return []; // Return empty array if data is not available yet
     }
 
     let filteredData = allCoinsData.filter(coin =>
-      coin.symbol.toLowerCase().includes(searchTerm.toLowerCase())
+      coin && coin.symbol && coin.symbol.toLowerCase().includes(searchTerm.toLowerCase())
     ).map(coin => {
       // 선택된 국내 거래소 가격
       const domesticPriceKey = `${selectedDomesticExchange}_price`;
@@ -50,6 +67,8 @@ function CoinTable({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
         premium: premium,
       };
     }).filter(coin => coin.domestic_price !== null && coin.global_price !== null); // 가격이 없는 코인 필터링
+    
+    console.log('Filtered coin data:', filteredData.length, 'coins:', filteredData);
 
     if (sortColumn) {
       filteredData.sort((a, b) => {

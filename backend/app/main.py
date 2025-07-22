@@ -2,15 +2,16 @@
 import os
 import asyncio
 import json
-from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from .database import engine, Base, get_db
 from .models import Exchange, Cryptocurrency
 from .schemas import Exchange as ExchangeSchema, Cryptocurrency as CryptocurrencySchema
 from . import services
+from . import liquidation_services
 
 app = FastAPI()
 
@@ -25,17 +26,41 @@ app.add_middleware(
 
 # --- WebSocket Connection Manager ---
 class ConnectionManager:
+    """WebSocket 연결을 관리하는 클래스.
+    
+    다수의 클라이언트 WebSocket 연결을 관리하고,
+    모든 연결된 클라이언트에게 실시간 데이터를 브로드캐스트합니다.
+    """
     def __init__(self):
+        """ConnectionManager 초기화.
+        
+        빈 연결 리스트를 생성합니다.
+        """
         self.active_connections: List[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
+        """새로운 WebSocket 연결을 수락하고 관리 리스트에 추가합니다.
+        
+        Args:
+            websocket (WebSocket): 새로운 WebSocket 연결
+        """
         await websocket.accept()
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
+        """WebSocket 연결을 관리 리스트에서 제거합니다.
+        
+        Args:
+            websocket (WebSocket): 제거할 WebSocket 연결
+        """
         self.active_connections.remove(websocket)
 
     async def broadcast(self, message: str):
+        """모든 연결된 클라이언트에게 메시지를 브로드캐스트합니다.
+        
+        Args:
+            message (str): 브로드캐스트할 JSON 형태의 메시지
+        """
         for connection in self.active_connections:
             await connection.send_text(message)
 
@@ -43,6 +68,16 @@ manager = ConnectionManager()
 
 # --- Background Task for Price Fetching ---
 async def price_updater():
+    """백그라운드에서 실행되는 가격 업데이터.
+    
+    1초마다 다양한 거래소에서 암호화폐 가격을 가져와서
+    김치 프리미엄을 계산하고 WebSocket을 통해 모든 클라이언트에게 브로드캐스트합니다.
+    
+    처리하는 데이터:
+    - Upbit, Bithumb (한국 거래소)
+    - Binance, Bybit (해외 거래소)
+    - Naver Finance (USD/KRW 환율)
+    """
     """Periodically fetches prices and broadcasts them to all connected clients."""
     print("Starting price_updater task...")
     exchange_rate = None
@@ -112,6 +147,11 @@ async def price_updater():
                 coin_data["upbit_price"] = upbit_ticker["price"] if upbit_ticker else None
                 coin_data["upbit_volume"] = upbit_ticker["volume"] if upbit_ticker else None
                 coin_data["upbit_change_percent"] = upbit_ticker["change_percent"] if upbit_ticker else None
+                
+                if upbit_ticker:
+                    print(f"Successfully fetched {symbol} from Upbit: {upbit_ticker['price']} KRW")
+                else:
+                    print(f"Failed to fetch {symbol} from Upbit")
 
                 # Fetch Binance ticker
                 binance_symbol = f"{symbol}USDT"
@@ -120,6 +160,11 @@ async def price_updater():
                     coin_data["binance_price"] = binance_ticker["price"] if binance_ticker else None
                     coin_data["binance_volume"] = binance_ticker["volume"] if binance_ticker else None
                     coin_data["binance_change_percent"] = binance_ticker["change_percent"] if binance_ticker else None
+                    
+                    if binance_ticker:
+                        print(f"Successfully fetched {symbol} from Binance: {binance_ticker['price']} USDT")
+                    else:
+                        print(f"Failed to fetch {symbol} from Binance")
                 else:
                     print(f"Binance does not support {binance_symbol}. Skipping.")
                     coin_data["binance_price"] = None
@@ -194,10 +239,13 @@ async def price_updater():
                     if binance_price_krw != 0:
                         premium = ((upbit_price - binance_price_krw) / binance_price_krw) * 100
                         coin_data["premium"] = round(premium, 2)
+                        print(f"{symbol} Kimchi Premium calculated: {premium:.2f}% (Upbit: {upbit_price} KRW, Binance: {binance_price} USDT, Rate: {exchange_rate})")
                     else:
                         coin_data["premium"] = None # Avoid ZeroDivisionError
+                        print(f"{symbol} Premium calculation failed: binance_price_krw is 0")
                 else:
                     coin_data["premium"] = None # Or some other indicator
+                    print(f"{symbol} Premium calculation failed: upbit_price={upbit_price}, binance_price={binance_price}, exchange_rate={exchange_rate}")
 
                 usdt_krw_ticker = services.get_upbit_ticker("USDT")
                 coin_data["usdt_krw_rate"] = usdt_krw_ticker["price"] if usdt_krw_ticker else None
@@ -217,13 +265,29 @@ async def price_updater():
 
 @app.on_event("startup")
 async def startup_event():
+    """애플리케이션 시작 시 실행되는 이벤트 핸들러.
+    
+    백그라운드 가격 업데이터 태스크를 시작합니다.
+    """
     """Start the background tasks when the app starts."""
     # No Upbit WebSocket connection needed now
     asyncio.create_task(price_updater())
+    # 청산 데이터 수집 시작
+    asyncio.create_task(liquidation_services.start_liquidation_collection())
+    # 청산 데이터용 WebSocket 관리자 설정
+    liquidation_services.set_websocket_manager(manager)
 
-# --- WebSocket Endpoint ---
+# --- WebSocket Endpoints ---
 @app.websocket("/ws/prices")
 async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket 엔드포인트 - 실시간 가격 스트리밍.
+    
+    클라이언트가 연결되면 실시간 가격 업데이트를 받을 수 있습니다.
+    연결이 끊어지면 자동으로 정리됩니다.
+    
+    Args:
+        websocket (WebSocket): 클라이언트 WebSocket 연결
+    """
     await manager.connect(websocket)
     try:
         while True:
@@ -234,23 +298,84 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
         print(f"Client disconnected")
 
+@app.websocket("/ws/liquidations")
+async def liquidation_websocket_endpoint(websocket: WebSocket):
+    """청산 데이터 WebSocket 엔드포인트.
+    
+    청산 데이터 실시간 업데이트를 WebSocket으로 전송합니다.
+    
+    Args:
+        websocket (WebSocket): 클라이언트 WebSocket 연결
+    """
+    await manager.connect(websocket)
+    try:
+        # 연결 시 최근 청산 데이터 전송
+        recent_data = liquidation_services.get_aggregated_liquidation_data(limit=60)
+        if recent_data:
+            initial_message = json.dumps({
+                'type': 'liquidation_initial',
+                'data': recent_data
+            })
+            await websocket.send_text(initial_message)
+        
+        # 연결 유지
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        print(f"Liquidation WebSocket client disconnected")
+
 # --- REST API Endpoints (can be kept for other purposes or removed) ---
 @app.get("/")
 def read_root():
+    """루트 엔드포인트 - API 상태 확인.
+    
+    Returns:
+        dict: API 실행 상태 메시지
+    """
     return {"message": "KimchiScan API is running!"}
 
 @app.get("/exchanges", response_model=List[ExchangeSchema])
 def get_exchanges(db: Session = Depends(get_db)):
+    """모든 거래소 정보를 조회합니다.
+    
+    Args:
+        db (Session): 데이터베이스 세션
+        
+    Returns:
+        List[ExchangeSchema]: 거래소 리스트
+    """
     exchanges = db.query(Exchange).all()
     return exchanges
 
 @app.get("/cryptocurrencies", response_model=List[CryptocurrencySchema])
 def get_cryptocurrencies(db: Session = Depends(get_db)):
+    """모든 암호화폐 정보를 조회합니다.
+    
+    Args:
+        db (Session): 데이터베이스 세션
+        
+    Returns:
+        List[CryptocurrencySchema]: 암호화폐 리스트
+    """
     cryptocurrencies = db.query(Cryptocurrency).all()
     return cryptocurrencies
 
 @app.get("/api/historical_prices/{symbol}")
 async def get_historical_prices(symbol: str, interval: str = "1d", limit: int = 30):
+    """특정 암호화폐의 과거 시세 데이터를 조회합니다.
+    
+    Args:
+        symbol (str): 암호화폐 심볼 (예: BTC, ETH)
+        interval (str): 시간 간격 (기본값: "1d")
+        limit (int): 조회할 데이터 개수 (기본값: 30)
+        
+    Returns:
+        list: 과거 시세 데이터 리스트
+        
+    Raises:
+        HTTPException: 데이터 조회 실패 시 404 에러
+    """
     """과거 시세 데이터를 조회합니다."""
     historical_data = services.get_binance_historical_prices(symbol.upper(), interval, limit)
     if not historical_data:
@@ -259,6 +384,14 @@ async def get_historical_prices(symbol: str, interval: str = "1d", limit: int = 
 
 @app.get("/api/fear_greed_index")
 async def get_fear_greed_index_data():
+    """공포/탐욕 지수 데이터를 조회합니다.
+    
+    Returns:
+        dict: 공포/탐욕 지수 데이터
+        
+    Raises:
+        HTTPException: 데이터 조회 실패 시 404 에러
+    """
     """공포/탐욕 지수 데이터를 조회합니다."""
     fng_data = services.get_fear_greed_index()
     if not fng_data:
@@ -268,6 +401,20 @@ async def get_fear_greed_index_data():
 # The old polling endpoint is no longer the primary method, but can be kept for testing.
 @app.get("/api/prices/{symbol}")
 def get_prices(symbol: str):
+    """특정 암호화폐의 현재 가격과 김치 프리미엄을 조회합니다.
+    
+    이 엔드포인트는 테스트 목적으로 유지되는 레거시 방식입니다.
+    실시간 데이터는 WebSocket을 통해 제공됩니다.
+    
+    Args:
+        symbol (str): 암호화폐 심볼 (예: BTC, ETH)
+        
+    Returns:
+        dict: 가격 정보와 김치 프리미엄
+        
+    Raises:
+        HTTPException: 가격 조회 실패 시 404 또는 503 에러
+    """
     upbit_price = services.get_upbit_price(symbol.upper())
     binance_price = services.get_binance_price(symbol.upper())
 
@@ -289,3 +436,30 @@ def get_prices(symbol: str):
         "premium": round(premium, 2),
         "usdt_krw_rate": round(usdt_krw_rate, 2)
     }
+
+@app.get("/api/liquidations")
+def get_liquidations(exchange: Optional[str] = None, limit: int = 60):
+    """청산 데이터를 조회합니다.
+    
+    Args:
+        exchange (str, optional): 특정 거래소 데이터만 조회
+        limit (int): 반환할 데이터 포인트 수 (기본값: 60분)
+        
+    Returns:
+        list: 청산 데이터 리스트
+    """
+    return liquidation_services.get_liquidation_data(exchange, limit)
+
+@app.get("/api/liquidations/aggregated")
+def get_aggregated_liquidations(limit: int = 60):
+    """집계된 청산 데이터를 조회합니다.
+    
+    모든 거래소의 청산 데이터를 시간별로 집계하여 반환합니다.
+    
+    Args:
+        limit (int): 반환할 시간 포인트 수 (기본값: 60분)
+        
+    Returns:
+        list: 시간별로 집계된 청산 데이터
+    """
+    return liquidation_services.get_aggregated_liquidation_data(limit)

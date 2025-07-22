@@ -22,10 +22,18 @@ ChartJS.register(
   Legend
 );
 
+/**
+ * 비트코인 과거 가격 차트 컴포넌트.
+ * 
+ * Binance API를 통해 BTC의 과거 30일 가격 데이터를 가져와
+ * Chart.js로 선 그래프로 시각화합니다.
+ * 
+ * @returns {JSX.Element} 가격 차트 UI
+ */
 function PriceChart() {
-  const [chartData, setChartData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [chartData, setChartData] = useState(null); // Chart.js에 사용될 차트 데이터
+  const [loading, setLoading] = useState(true); // 데이터 로딩 상태
+  const [error, setError] = useState(null); // 에러 상태
 
   useEffect(() => {
     const fetchHistoricalData = async () => {
