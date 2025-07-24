@@ -79,16 +79,29 @@ async def price_aggregator():
                 if binance_price_krw > 0:
                     premium = ((upbit_price - binance_price_krw) / binance_price_krw) * 100
 
+            # Binance volume (convert to KRW equivalent)
+            binance_volume_krw = None
+            if binance_ticker.get("volume") is not None and usdt_krw_rate is not None:
+                # binance volume은 이제 USDT 거래대금이므로 KRW 환율만 곱함
+                usdt_volume = binance_ticker["volume"]
+                binance_volume_krw = usdt_volume * usdt_krw_rate
+                
+
+            # Bybit volume (convert to KRW equivalent)
+            bybit_volume_krw = None
+            if bybit_ticker.get("volume") is not None and bybit_ticker.get("price") is not None and usdt_krw_rate is not None:
+                bybit_volume_krw = bybit_ticker["volume"] * bybit_ticker["price"] * usdt_krw_rate
+
             coin_data = {
                 "symbol": symbol,
                 "upbit_price": upbit_price,
                 "upbit_volume": upbit_ticker.get("volume"),
                 "upbit_change_percent": upbit_ticker.get("change_percent"),
                 "binance_price": binance_price,
-                "binance_volume": binance_ticker.get("volume"),
+                "binance_volume": binance_volume_krw, # KRW 변환된 거래량 사용
                 "binance_change_percent": binance_ticker.get("change_percent"),
                 "bybit_price": bybit_ticker.get("price"),
-                "bybit_volume": bybit_ticker.get("volume"),
+                "bybit_volume": bybit_volume_krw, # KRW 변환된 거래량 사용
                 "bybit_change_percent": bybit_ticker.get("change_percent"),
                 "premium": round(premium, 2) if premium is not None else None,
                 "exchange_rate": exchange_rate,
@@ -96,6 +109,7 @@ async def price_aggregator():
             }
             
             all_coins_data.append(coin_data)
+
 
         if all_coins_data:
             await manager.broadcast(json.dumps(all_coins_data))

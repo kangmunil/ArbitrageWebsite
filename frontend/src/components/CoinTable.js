@@ -26,6 +26,7 @@ function CoinTable({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
     gateio: 'Gate.io',
     mexc: 'MEXC',
   };
+  
   const [searchTerm, setSearchTerm] = useState(''); // 검색어 상태
   const [sortColumn, setSortColumn] = useState('domestic_volume'); // 기본 정렬 대상 열: 한국 거래소 거래량
   const [sortDirection, setSortDirection] = useState('desc'); // 기본 정렬 방향: 내림차순

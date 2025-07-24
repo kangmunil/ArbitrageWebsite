@@ -54,9 +54,11 @@ async def upbit_websocket_client():
                 async for message in websocket:
                     data = json.loads(message)
                     symbol = data['code'].replace('KRW-', '')
+                    
+                    
                     shared_data["upbit_tickers"][symbol] = {
                         "price": data['trade_price'],
-                        "volume": data['acc_trade_volume_24h'],
+                        "volume": data['acc_trade_price_24h'],  # 거래대금 (KRW) 사용
                         "change_percent": data['signed_change_rate'] * 100
                     }
                     # logger.debug(f"Upbit 수신: {symbol} = {data['trade_price']}")
@@ -82,7 +84,7 @@ async def binance_websocket_client():
                             symbol = ticker['s'].replace('USDT', '')
                             shared_data["binance_tickers"][symbol] = {
                                 "price": float(ticker['c']),
-                                "volume": float(ticker['v']),
+                                "volume": float(ticker['q']),  # q = quote asset volume (USDT 거래대금)
                                 "change_percent": float(ticker['P'])
                             }
                             # logger.debug(f"Binance 수신: {symbol} = {ticker['c']}")
