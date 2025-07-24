@@ -35,6 +35,8 @@
 }
 
 .App-section {
+  display: flex;
+  flex-direction: column;
   padding: 20px;
   border: 1px solid #444; /* 섹션 구분선 */
   border-radius: 8px;
@@ -67,59 +69,7 @@
   color: #5cb85c; /* Green for negative premium */
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 20px;
-}
-
-th, td {
-  border: 1px solid #444;
-  padding: 10px;
-  text-align: left;
-  /* Add fixed width for each column */
-  /* Adjust these percentages based on your content */
-  width: 16.66%; /* Example: 6 columns, so 100% / 6 */
-}
-
-/* More specific width for symbol column if needed */
-th:nth-child(1), td:nth-child(1) {
-  width: 10%; /* Symbol */
-}
-
-th:nth-child(2), td:nth-child(2) {
-  width: 20%; /* Domestic Price */
-}
-
-th:nth-child(3), td:nth-child(3) {
-  width: 20%; /* Global Price */
-}
-
-th:nth-child(4), td:nth-child(4) {
-  width: 20%; /* Global Volume */
-}
-
-th:nth-child(5), td:nth-child(5) {
-  width: 15%; /* Global Change */
-}
-
-th:nth-child(6), td:nth-child(6) {
-  width: 15%; /* Kimchi Premium */
-}
-
-th {
-  background-color: #333;
-  color: #61dafb;
-  cursor: pointer; /* Add cursor for sortable headers */
-}
-
-tbody tr:nth-child(even) {
-  background-color: #222;
-}
-
-tbody tr:hover {
-  background-color: #3a3a3a;
-}
+/* Table styles removed - now using Tailwind Grid */
 
 .coin-table-controls {
   display: flex;

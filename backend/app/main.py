@@ -94,6 +94,7 @@ async def price_aggregator():
                 "exchange_rate": exchange_rate,
                 "usdt_krw_rate": usdt_krw_rate,
             }
+            
             all_coins_data.append(coin_data)
 
         if all_coins_data:
@@ -108,7 +109,13 @@ async def startup_event():
     # 각 거래소 WebSocket 클라이언트 및 기타 데이터 수집기 실행
     asyncio.create_task(services.upbit_websocket_client())
     asyncio.create_task(services.binance_websocket_client())
-    # asyncio.create_task(services.bybit_websocket_client()) # 추후 구현
+    asyncio.create_task(services.bybit_websocket_client())
+    asyncio.create_task(services.fetch_exchange_rate_periodically())
+    asyncio.create_task(services.fetch_usdt_krw_rate_periodically())
+
+    # 가격 집계 및 브로드캐스트 태스크 시작
+    logger.info("가격 집계 태스크를 시작합니다.")
+    asyncio.create_task(price_aggregator())
 
     # 청산 데이터 수집 시작
     logger.info("청산 데이터 수집을 시작합니다.")

@@ -48,14 +48,13 @@ function App() {
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        console.log('Received WebSocket data:', data);
         
         // 배열 데이터인 경우에만 코인 데이터 업데이트 (가격 데이터)
         if (Array.isArray(data)) {
+          console.log(`WebSocket received ${data.length} coins at ${new Date().toLocaleTimeString()}`);
           setAllCoinsData(data);
         } else {
           console.log('Non-array data received:', data);
-          // 빈 배열로 설정하지 않고 기존 데이터 유지
         }
       };
 
@@ -82,10 +81,11 @@ function App() {
 
   return (
     <div className="App">
+      <div className="mx-auto max-w-screen-2xl px-4 lg:px-6">
       <Header />
       <main className="App-main">
         <div className="App-layout-container">
-          <div className="App-sidebar">
+          <div className="App-sidebar items-center">
             <section className="App-section">
               <FearGreedIndex />
             </section>
@@ -121,6 +121,7 @@ function App() {
           </div>
         </div>
       </main>
+      </div>
     </div>
   );
 }

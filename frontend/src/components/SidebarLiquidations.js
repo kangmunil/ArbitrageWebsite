@@ -5,7 +5,7 @@ const SidebarLiquidations = () => {
   const { trend, error, lastUpdate } = useLiquidations(5);
 
   return (
-    <aside className="relative w-80 px-4 py-3 text-sm text-white bg-zinc-900">
+    <aside className="relative w-80 px-4 py-3 text-base text-white mx-auto">
       {/* 헤더 */}
       <header className="mb-4">
         <h2 className="font-semibold text-cyan-300 text-center">실시간 청산 데이터</h2>
