@@ -3,9 +3,8 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import Header from './components/Header';
 import CoinTable from './components/CoinTable';
-import PriceChart from './components/PriceChart';
 import FearGreedIndex from './components/FearGreedIndex';
-import LiquidationChart from './components/LiquidationChart';
+import SidebarLiquidations from './components/SidebarLiquidations';
 
 /**
  * 암호화폐 차익거래 모니터링 웹사이트의 메인 애플리케이션 컴포넌트.
@@ -23,7 +22,25 @@ function App() {
   useEffect(() => {
     let ws;
     const connectWebSocket = () => {
-      ws = new WebSocket(`ws://localhost:8000/ws/prices`);
+      // Firefox 호환성을 위한 WebSocket 연결 개선
+      try {
+        // 모든 브라우저에 대해 localhost를 시도한 다음 127.0.0.1을 시도
+        let wsUrl = `ws://localhost:8000/ws/prices`;
+        console.log(`Connecting to WebSocket: ${wsUrl}`);
+        ws = new WebSocket(wsUrl);
+      } catch (error) {
+        console.error("WebSocket creation failed:", error);
+        // 실패 시 127.0.0.1로 재시도
+        try {
+          let wsUrl = `ws://127.0.0.1:8000/ws/prices`;
+          console.log(`Retrying with 127.0.0.1: ${wsUrl}`);
+          ws = new WebSocket(wsUrl);
+        } catch (retryError) {
+          console.error("WebSocket retry failed:", retryError);
+          setTimeout(connectWebSocket, 3000);
+          return;
+        }
+      }
 
       ws.onopen = () => {
         console.log("WebSocket connected");
@@ -31,13 +48,14 @@ function App() {
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        // 백엔드에서 배열 형태로 데이터를 전송하므로 그대로 사용
         console.log('Received WebSocket data:', data);
+        
+        // 배열 데이터인 경우에만 코인 데이터 업데이트 (가격 데이터)
         if (Array.isArray(data)) {
           setAllCoinsData(data);
         } else {
-          console.error('Received data is not an array:', data);
-          setAllCoinsData([]);
+          console.log('Non-array data received:', data);
+          // 빈 배열로 설정하지 않고 기존 데이터 유지
         }
       };
 
@@ -45,10 +63,11 @@ function App() {
         console.error("WebSocket error:", error);
       };
 
-      ws.onclose = () => {
-        console.log("WebSocket disconnected. Attempting to reconnect...");
-        // Reconnect after a short delay
-        setTimeout(connectWebSocket, 3000); 
+      ws.onclose = (event) => {
+        console.log("WebSocket disconnected. Code:", event.code, "Reason:", event.reason);
+        console.log("Attempting to reconnect...");
+        // Firefox에서 더 안정적인 재연결을 위해 지연 시간 조정
+        setTimeout(connectWebSocket, 5000); 
       };
     };
 
@@ -70,12 +89,23 @@ function App() {
             <section className="App-section">
               <FearGreedIndex />
             </section>
-            <section id="chart-section" className="App-section">
-              <LiquidationChart />
+            <section id="liquidation-widget-section" className="App-section">
+              <SidebarLiquidations />
             </section>
             <section className="App-section">
-              <h2>Bitcoin Price Chart</h2>
-              <PriceChart />
+              {/* 광고 자리 */}
+              <div className="advertisement-placeholder">
+                <p style={{ 
+                  textAlign: 'center', 
+                  color: '#666', 
+                  padding: '40px 20px',
+                  border: '2px dashed #333',
+                  borderRadius: '8px',
+                  backgroundColor: '#1a1a1a'
+                }}>
+                  광고 공간
+                </p>
+              </div>
             </section>
           </div>
           <div className="App-content">

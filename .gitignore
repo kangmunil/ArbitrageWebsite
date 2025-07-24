@@ -1,0 +1,16 @@
+# Python 가상 환경 (Virtual Environments)
+.venv/
+venv/
+
+# 다른 제외하고 싶은 파일이나 폴더가 있다면 여기에 추가
+# 예를 들어, 캐시 파일, 로그 파일, 파이썬 바이트코드 파일 등
+__pycache__/
+*.pyc
+*.log
+.DS_Store # macOS 관련 파일
+
+# Node.js modules
+node_modules/
+
+# Optional: npm debug log
+npm-debug.log*

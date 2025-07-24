@@ -14,7 +14,7 @@ function Header() {
     <header className="App-header">
       <div className="header-left">
         {/* 로고 이미지 또는 아이콘 */}
-        <img src="/logo.svg" className="App-logo" alt="logo" /> {/* 예시 로고 경로 */}
+        <img src="/logo.png" className="App-logo" alt="logo" /> {/* 예시 로고 경로 */}
         <h1>KimchiScan</h1>
       </div>
       <nav className="header-right">

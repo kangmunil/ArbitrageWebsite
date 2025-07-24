@@ -26,26 +26,31 @@ function CoinTable({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
     mexc: 'MEXC',
   };
   const [searchTerm, setSearchTerm] = useState(''); // 검색어 상태
-  const [sortColumn, setSortColumn] = useState(null); // 정렬 대상 열
-  const [sortDirection, setSortDirection] = useState('asc'); // 정렬 방향 (asc/desc)
+  const [sortColumn, setSortColumn] = useState('domestic_volume'); // 기본 정렬 대상 열: 한국 거래소 거래량
+  const [sortDirection, setSortDirection] = useState('desc'); // 기본 정렬 방향: 내림차순
+  const [showAll, setShowAll] = useState(false); // 더보기 상태
 
-  const filteredAndSortedData = useMemo(() => {
-    console.log('CoinTable received allCoinsData:', allCoinsData);
+  const processedData = useMemo(() => {
     if (!allCoinsData || allCoinsData.length === 0) {
-      console.log('No coin data available');
-      return []; // Return empty array if data is not available yet
+      return [];
     }
 
-    let filteredData = allCoinsData.filter(coin =>
-      coin && coin.symbol && coin.symbol.toLowerCase().includes(searchTerm.toLowerCase())
-    ).map(coin => {
-      // 선택된 국내 거래소 가격
+    let data = allCoinsData.map(coin => {
+      // 선택된 국내 거래소 가격, 거래량, 변동률
       const domesticPriceKey = `${selectedDomesticExchange}_price`;
+      const domesticVolumeKey = `${selectedDomesticExchange}_volume`;
+      const domesticChangePercentKey = `${selectedDomesticExchange}_change_percent`;
       const domesticPrice = coin[domesticPriceKey];
+      const domesticVolume = coin[domesticVolumeKey];
+      const domesticChangePercent = coin[domesticChangePercentKey];
 
-      // 선택된 해외 거래소 가격
+      // 선택된 해외 거래소 가격, 거래량, 변동률
       const globalPriceKey = `${selectedGlobalExchange}_price`;
+      const globalVolumeKey = `${selectedGlobalExchange}_volume`;
+      const globalChangePercentKey = `${selectedGlobalExchange}_change_percent`;
       const globalPrice = coin[globalPriceKey];
+      const globalVolume = coin[globalVolumeKey];
+      const globalChangePercent = coin[globalChangePercentKey];
 
       let premium = null;
       if (domesticPrice !== null && globalPrice !== null && coin.exchange_rate !== null) {
@@ -59,19 +64,25 @@ function CoinTable({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
       return {
         ...coin,
         domestic_price: domesticPrice,
+        domestic_volume: domesticVolume,
+        domestic_change_percent: domesticChangePercent,
         global_price: globalPrice,
-        domestic_volume: coin[`${selectedDomesticExchange}_volume`],
-        global_volume: coin[`${selectedGlobalExchange}_volume`],
-        domestic_change_percent: coin[`${selectedDomesticExchange}_change_percent`],
-        global_change_percent: coin[`${selectedGlobalExchange}_change_percent`],
+        global_volume: globalVolume,
+        global_change_percent: globalChangePercent,
         premium: premium,
       };
-    }).filter(coin => coin.domestic_price !== null && coin.global_price !== null); // 가격이 없는 코인 필터링
-    
-    console.log('Filtered coin data:', filteredData.length, 'coins:', filteredData);
+    }).filter(coin => coin.domestic_price !== null && coin.global_price !== null && coin.domestic_volume !== null); // 국내/해외 가격 및 국내 거래량 없는 코인 필터링
 
+    // 검색어 필터링
+    if (searchTerm) {
+      data = data.filter(coin =>
+        coin.symbol.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // 정렬
     if (sortColumn) {
-      filteredData.sort((a, b) => {
+      data.sort((a, b) => {
         const aValue = a[sortColumn];
         const bValue = b[sortColumn];
 
@@ -85,8 +96,13 @@ function CoinTable({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
         }
       });
     }
-    return filteredData;
+
+    return data;
   }, [allCoinsData, searchTerm, sortColumn, sortDirection, selectedDomesticExchange, selectedGlobalExchange]);
+
+  const displayData = useMemo(() => {
+    return showAll ? processedData : processedData.slice(0, 20);
+  }, [processedData, showAll]);
 
   if (!allCoinsData || allCoinsData.length === 0) {
     return <p>Loading coin data...</p>;
@@ -147,28 +163,41 @@ function CoinTable({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
         <thead>
           <tr>
             <th onClick={() => handleSort('symbol')}>Symbol{renderSortIndicator('symbol')}</th>
-            <th onClick={() => handleSort('domestic_price')}>{exchangeDisplayNames[selectedDomesticExchange]} Price{renderSortIndicator('domestic_price')}</th>
-            <th onClick={() => handleSort('global_price')}>{exchangeDisplayNames[selectedGlobalExchange]} Price{renderSortIndicator('global_price')}</th>
-            <th onClick={() => handleSort('global_volume')}>{exchangeDisplayNames[selectedGlobalExchange]} Volume (24h){renderSortIndicator('global_volume')}</th>
-            <th onClick={() => handleSort('global_change_percent')}>{exchangeDisplayNames[selectedGlobalExchange]} Change (%){renderSortIndicator('global_change_percent')}</th>
-            <th onClick={() => handleSort('premium')}>Kimchi Premium (%){renderSortIndicator('premium')}</th>
+            <th onClick={() => handleSort('domestic_price')}>
+              한국거래소 가격<br/>
+              <small>({exchangeDisplayNames[selectedDomesticExchange]})</small>
+              {renderSortIndicator('domestic_price')}
+            </th>
+            <th onClick={() => handleSort('global_price')}>
+              해외거래소 가격<br/>
+              <small>({exchangeDisplayNames[selectedGlobalExchange]})</small>
+              {renderSortIndicator('global_price')}
+            </th>
+            <th onClick={() => handleSort('premium')}>김프(%){renderSortIndicator('premium')}</th>
+            <th onClick={() => handleSort('domestic_volume')}>거래량 (24h){renderSortIndicator('domestic_volume')}</th>
+            <th onClick={() => handleSort('domestic_change_percent')}>24h 변동률{renderSortIndicator('domestic_change_percent')}</th>
           </tr>
         </thead>
         <tbody>
-          {filteredAndSortedData.map((coin) => (
+          {displayData.map((coin) => (
             <tr key={coin.symbol}>
               <td>{coin.symbol}</td>
-              <td>{coin.domestic_price ? coin.domestic_price.toLocaleString() : 'N/A'} KRW</td>
-              <td>{coin.global_price ? `${coin.global_price.toLocaleString()}` : 'N/A'}</td>
-              <td>{coin.global_volume ? coin.global_volume.toLocaleString() : 'N/A'}</td>
-              <td>{coin.global_change_percent ? `${coin.global_change_percent.toFixed(2)}%` : 'N/A'}</td>
+              <td>{coin.domestic_price ? `₩${coin.domestic_price.toLocaleString()}` : 'N/A'}</td>
+              <td>{coin.global_price ? `$${coin.global_price.toLocaleString()}` : 'N/A'}</td>
               <td className={coin.premium > 0 ? 'premium-plus' : 'premium-minus'}>
                 {coin.premium !== null ? `${coin.premium}%` : 'N/A'}
               </td>
+              <td>{coin.domestic_volume ? `₩${(coin.domestic_volume / 100_000_000).toFixed(2)}억` : 'N/A'}</td>
+              <td>{coin.domestic_change_percent ? `${coin.domestic_change_percent.toFixed(2)}%` : 'N/A'}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      {!showAll && processedData.length > 20 && (
+        <button onClick={() => setShowAll(true)} className="show-more-button">
+          더보기 ({processedData.length - 20}개)
+        </button>
+      )}
     </div>
   );
 }

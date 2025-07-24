@@ -8,14 +8,14 @@ import asyncio
 import json
 import websockets
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Deque
 from collections import defaultdict, deque
 import logging
 
 logger = logging.getLogger(__name__)
 
 # 청산 데이터 저장용 (메모리 기반, 최근 24시간)
-liquidation_data = defaultdict(lambda: deque(maxlen=1440))  # 1분 버킷 * 24시간 = 1440
+liquidation_data: Dict[str, Deque[Dict]] = defaultdict(lambda: deque(maxlen=1440))  # 1분 버킷 * 24시간 = 1440
 
 # WebSocket 연결 관리자 (main.py에서 import할 수 있도록)
 liquidation_websocket_manager = None
@@ -31,10 +31,13 @@ class LiquidationDataCollector:
         
     async def start_collection(self):
         """모든 거래소에서 청산 데이터 수집 시작."""
+        print("LiquidationDataCollector.start_collection() called")
         if self.is_running:
+            print("Liquidation collection already running, skipping...")
             return
             
         self.is_running = True
+        print("청산 데이터 수집 시작...")
         logger.info("청산 데이터 수집 시작...")
         
         # 모든 거래소 WebSocket 연결을 병렬로 시작
@@ -47,7 +50,13 @@ class LiquidationDataCollector:
             self.collect_hyperliquid_liquidations()
         ]
         
-        await asyncio.gather(*tasks, return_exceptions=True)
+        print(f"Starting {len(tasks)} liquidation collection tasks...")
+        try:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        except Exception as e:
+            print(f"Error in liquidation collection tasks: {e}")
+            import traceback
+            traceback.print_exc()
     
     async def collect_binance_liquidations(self):
         """바이낸스 선물 청산 데이터 수집."""
@@ -279,10 +288,27 @@ class LiquidationDataCollector:
         except Exception as e:
             logger.error(f"바이낸스 청산 데이터 처리 오류: {e}")
     
-    async def process_bybit_liquidation(self, data: dict):
+    async def process_bybit_liquidation(self, data):
         """바이비트 청산 데이터 처리."""
         try:
-            if 'data' in data:
+            # 문자열이면 JSON으로 파싱
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse Bybit data as JSON: {e}, data: {str(data)[:200]}")
+                    return
+            
+            # 데이터가 딕셔너리인지 확인
+            if not isinstance(data, dict):
+                logger.warning(f"Received non-dict data for Bybit liquidation: type={type(data)}, data={str(data)[:200]}")
+                return
+
+            # Skip heartbeat and status messages
+            if data.get('op') == 'pong' or 'success' in data or 'type' in data:
+                return
+
+            if 'data' in data and data['data']:
                 for item in data['data']:
                     liquidation = {
                         'exchange': 'bybit',
@@ -382,6 +408,7 @@ class LiquidationDataCollector:
     async def store_liquidation_data(self, liquidation: dict):
         """청산 데이터를 1분 버킷으로 집계하여 저장."""
         try:
+            print(f"store_liquidation_data called for {liquidation['exchange']}")
             # 1분 단위로 버킷팅
             timestamp = liquidation['timestamp']
             minute_bucket = (timestamp // 60000) * 60000  # 밀리초를 분 단위로 변환
@@ -390,13 +417,15 @@ class LiquidationDataCollector:
             side = liquidation['side']
             value = liquidation['value']
             
+            print(f"Processing liquidation: {exchange} {side} {value} at bucket {minute_bucket}")
+            
             # 기존 버킷 데이터 찾기 또는 새로 생성
             
             # 기존 데이터에서 해당 버킷 찾기
             existing_bucket = None
-            for bucket in liquidation_data[exchange]:
-                if bucket['timestamp'] == minute_bucket:
-                    existing_bucket = bucket
+            for bucket_item in liquidation_data[exchange]:
+                if bucket_item['timestamp'] == minute_bucket:
+                    existing_bucket = bucket_item
                     break
             
             if existing_bucket is None:
@@ -411,6 +440,7 @@ class LiquidationDataCollector:
                 }
                 liquidation_data[exchange].append(new_bucket)
                 existing_bucket = new_bucket
+                print(f"Created new bucket for {exchange}")
             
             # 데이터 집계
             if side == 'long':
@@ -420,12 +450,18 @@ class LiquidationDataCollector:
                 existing_bucket['short_volume'] += value
                 existing_bucket['short_count'] += 1
             
+            print(f"Updated bucket: long={existing_bucket['long_volume']}, short={existing_bucket['short_volume']}")
+            
             # 실시간 데이터 브로드캐스트 (WebSocket 연결이 있는 경우)
             if liquidation_websocket_manager:
+                print(f"Attempting to broadcast. Manager active connections: {len(liquidation_websocket_manager.active_connections)}")
                 await self.broadcast_liquidation_update(liquidation)
                 
         except Exception as e:
+            print(f"Error storing liquidation data: {e}")
             logger.error(f"청산 데이터 저장 오류: {e}")
+            import traceback
+            traceback.print_exc()
     
     async def broadcast_liquidation_update(self, liquidation: dict):
         """새로운 청산 데이터를 WebSocket으로 브로드캐스트합니다."""
@@ -481,41 +517,106 @@ def get_aggregated_liquidation_data(limit: int = 60) -> List[Dict]:
         List[Dict]: 시간별로 집계된 청산 데이터
     """
     # 시간별로 모든 거래소 데이터 집계
-    time_buckets = defaultdict(lambda: {
-        'timestamp': 0,
-        'exchanges': {},
-        'total_long': 0,
-        'total_short': 0
-    })
+    time_buckets: Dict[int, Dict] = {}
     
     # 각 거래소에서 최근 데이터 가져오기
     for exchange, data_deque in liquidation_data.items():
         recent_data = list(data_deque)[-limit:]
         
         for bucket in recent_data:
-            timestamp = bucket['timestamp']
+            timestamp = bucket.get('timestamp')
+            if not timestamp:
+                continue
+
+            # Explicitly initialize the bucket if it doesn't exist
+            if timestamp not in time_buckets:
+                time_buckets[timestamp] = {
+                    'timestamp': timestamp,
+                    'exchanges': {},
+                    'total_long': 0,
+                    'total_short': 0
+                }
+
+            # Now access the bucket directly
             
-            if time_buckets[timestamp]['timestamp'] == 0:
-                time_buckets[timestamp]['timestamp'] = timestamp
-            
-            time_buckets[timestamp]['exchanges'][exchange] = {
-                'long_volume': bucket['long_volume'],
-                'short_volume': bucket['short_volume'],
-                'long_count': bucket['long_count'],
-                'short_count': bucket['short_count']
+            exchange_name = bucket.get('exchange', 'unknown')
+            time_buckets[timestamp]['exchanges'][exchange_name] = {
+                'long_volume': bucket.get('long_volume', 0),
+                'short_volume': bucket.get('short_volume', 0),
+                'long_count': bucket.get('long_count', 0),
+                'short_count': bucket.get('short_count', 0)
             }
             
-            time_buckets[timestamp]['total_long'] += bucket['long_volume']
-            time_buckets[timestamp]['total_short'] += bucket['short_volume']
+            time_buckets[timestamp]['total_long'] += bucket.get('long_volume', 0)
+            time_buckets[timestamp]['total_short'] += bucket.get('short_volume', 0)
     
-    # 시간순 정렬하여 반환
-    result = sorted(time_buckets.values(), key=lambda x: x['timestamp'])
+    # 시간순으로 정렬하여 반환
+    # .get()을 사용하여 정렬 중 발생할 수 있는 오류를 방지합니다.
+    result = sorted(list(time_buckets.values()), key=lambda x: int(x.get('timestamp', 0)))
     return result[-limit:]
 
 
 async def start_liquidation_collection():
     """청산 데이터 수집 시작."""
-    await liquidation_collector.start_collection()
+    print("start_liquidation_collection() called")
+    try:
+        # First, generate some test data
+        await generate_test_liquidation_data()
+        print("Test liquidation data generated")
+        # Then start the real collection
+        await liquidation_collector.start_collection()
+    except Exception as e:
+        print(f"Error in start_liquidation_collection: {e}")
+        import traceback
+        traceback.print_exc()
+
+async def generate_test_liquidation_data():
+    """테스트용 청산 데이터 생성."""
+    print("Generating test liquidation data...")
+    import time
+    import random
+    
+    current_time = int(time.time() * 1000)
+    
+    # Create test liquidations for multiple exchanges
+    test_liquidations = [
+        {
+            'exchange': 'binance',
+            'symbol': 'BTCUSDT',
+            'side': 'long',
+            'quantity': 2.5,
+            'price': 100000,
+            'value': 250000,
+            'timestamp': current_time
+        },
+        {
+            'exchange': 'bybit',
+            'symbol': 'BTCUSDT',
+            'side': 'short',
+            'quantity': 1.8,
+            'price': 99500,
+            'value': 179100,
+            'timestamp': current_time - 30000  # 30 seconds ago
+        },
+        {
+            'exchange': 'okx',
+            'symbol': 'BTC-USDT-SWAP',
+            'side': 'long',
+            'quantity': 3.2,
+            'price': 100200,
+            'value': 320640,
+            'timestamp': current_time - 60000  # 1 minute ago
+        }
+    ]
+    
+    # Store the test data
+    for liquidation in test_liquidations:
+        print(f"About to store liquidation: {liquidation['exchange']} {liquidation['side']}")
+        await liquidation_collector.store_liquidation_data(liquidation)
+        print(f"Stored test liquidation: {liquidation['exchange']} {liquidation['side']} {liquidation['quantity']} {liquidation['symbol']}") 
+    
+    print(f"Generated {len(test_liquidations)} test liquidations")
+    print(f"Current liquidation_data after test data: {liquidation_data}")
 
 def set_websocket_manager(manager):
     """WebSocket 관리자 설정."""

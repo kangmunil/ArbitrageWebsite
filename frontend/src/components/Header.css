@@ -3,7 +3,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 5px 20px; /* 패딩을 줄여 헤더 높이 감소 */
+  padding: 0 20px; /* 상하 패딩 제거 */
+  height: 60px; /* 헤더 높이 증가 */
   background-color: #282c34;
   color: white;
   border-bottom: 1px solid #444;
@@ -15,8 +16,15 @@
 }
 
 .App-logo {
-  height: 30px; /* 로고 크기 더 작게 조정 */
+  height: 50px; /* 로고 크기 키움 */
+  width: 50px; /* 로고 크기 키움 */
   margin-right: 10px;
+}
+
+/* 헤더 제목 스타일 추가 */
+.App-header h1 {
+  font-size: 1.5em;
+  margin: 0;
 }
 
 .header-right .nav-link {

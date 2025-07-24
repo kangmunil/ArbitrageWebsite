@@ -41,6 +41,8 @@ function LiquidationChart() {
     bitget: true,
     hyperliquid: true
   }); // 표시할 거래소 선택 상태
+  const [recentLiquidations, setRecentLiquidations] = useState([]); // 최근 청산 스트림 (최근 20개)
+  const [timelineData, setTimelineData] = useState([]); // 5분 간격 누적 데이터 (최근 2시간)
   
   // 거래소별 색상 설정
   const exchangeColors = {
@@ -53,22 +55,28 @@ function LiquidationChart() {
   };
 
   useEffect(() => {
-    fetchLiquidationData();
-    connectWebSocket();
+    const cleanupWs = connectWebSocket();
+    
+    // 5분마다 타임라인 데이터 정리 (오래된 데이터 제거)
+    const cleanupInterval = setInterval(() => {
+      const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+      setTimelineData(prev => prev.filter(item => item.timestamp >= twoHoursAgo));
+    }, 5 * 60 * 1000); // 5분마다
     
     return () => {
-      // WebSocket 연결 정리는 connectWebSocket 내부에서 처리
+      cleanupWs();
+      clearInterval(cleanupInterval);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   useEffect(() => {
     // 선택된 거래소가 변경되면 차트 데이터 업데이트
     if (chartData) {
-      // 현재 데이터를 기반으로 차트 재생성
-      const mockData = generateDemoData();
-      processChartData(mockData);
+      processTimelineChart();
     }
-  }, [selectedExchanges]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedExchanges, timelineData]);
 
   /**
    * WebSocket 연결을 설정하여 실시간 청산 데이터를 수신합니다.
@@ -77,7 +85,12 @@ function LiquidationChart() {
     let ws;
     
     const connect = () => {
-      ws = new WebSocket('ws://localhost:8000/ws/liquidations');
+      // Firefox 전용 처리 - 먼저 127.0.0.1 시도
+      const isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
+      let wsUrl = isFirefox ? 'ws://127.0.0.1:8000/ws/liquidations' : 'ws://localhost:8000/ws/liquidations';
+      console.log(`Connecting to liquidation WebSocket: ${wsUrl} (Firefox: ${isFirefox})`);
+      
+      ws = new WebSocket(wsUrl);
       
       ws.onopen = () => {
         console.log('청산 데이터 WebSocket 연결됨');
@@ -91,7 +104,7 @@ function LiquidationChart() {
           if (message.type === 'liquidation_initial' && message.data) {
             // 초기 데이터 로드
             console.log('초기 청산 데이터 수신:', message.data.length, '개 아이템');
-            processChartData(message.data);
+            message.data.forEach(item => updateTimelineData(item));
             setLoading(false);
           } else if (message.type === 'liquidation_update' && message.data) {
             // 실시간 업데이트
@@ -105,9 +118,7 @@ function LiquidationChart() {
       
       ws.onerror = (error) => {
         console.error('WebSocket 오류:', error);
-        setError('WebSocket 연결 오류. HTTP API로 대체합니다.');
-        // WebSocket 실패 시 HTTP API 사용
-        fetchLiquidationData();
+        setError('WebSocket 연결 오류. 데이터를 가져올 수 없습니다.');
       };
       
       ws.onclose = () => {
@@ -127,92 +138,92 @@ function LiquidationChart() {
   };
   
   /**
-   * 새로운 데이터로 차트를 업데이트합니다.
+   * 새로운 청산 데이터 처리 (실시간 스트림 + 타임라인 업데이트)
    */
   const updateChartWithNewData = (newDataPoint) => {
-    setChartData(prevData => {
-      if (!prevData) return null;
-      
-      // 새 데이터 포인트를 추가하고 가장 오래된 것 제거
-      const newLabels = [...prevData.labels];
-      const newDate = new Date(newDataPoint.timestamp);
-      const newLabel = newDate.toLocaleTimeString('ko-KR', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: false 
-      });
-      
-      newLabels.push(newLabel);
-      if (newLabels.length > 60) {
-        newLabels.shift(); // 가장 오래된 라벨 제거
-      }
-      
-      // 각 데이터셋 업데이트
-      const newDatasets = prevData.datasets.map(dataset => {
-        const newData = [...dataset.data];
-        
-        // 데이터셋 이름에서 거래소와 사이드 추출
-        const exchangeName = dataset.label.split(' ')[0].toLowerCase();
-        const isLong = dataset.label.includes('Long');
-        
-        // 새 데이터 포인트 추가
-        const exchangeData = newDataPoint.exchanges[exchangeName];
-        if (exchangeData) {
-          const value = isLong ? 
-            exchangeData.long_volume / 1000 : 
-            -(exchangeData.short_volume / 1000);
-          newData.push(value);
-        } else {
-          newData.push(0);
+    if (!newDataPoint || !newDataPoint.exchanges) return;
+    
+    // 1. 실시간 청산 스트림에 추가 (최근 20개만 유지)
+    if (newDataPoint.exchanges) {
+      Object.entries(newDataPoint.exchanges).forEach(([exchange, data]) => {
+        if (data && (data.long_volume > 0 || data.short_volume > 0)) {
+          const liquidationEvent = {
+            id: Date.now() + Math.random(),
+            timestamp: newDataPoint.timestamp || Date.now(),
+            exchange,
+            longVolume: data.long_volume || 0,
+            shortVolume: data.short_volume || 0,
+            longCount: data.long_count || 0,
+            shortCount: data.short_count || 0
+          };
+          
+          setRecentLiquidations(prev => {
+            const updated = [liquidationEvent, ...prev];
+            return updated.slice(0, 20); // 최근 20개만 유지
+          });
         }
-        
-        if (newData.length > 60) {
-          newData.shift(); // 가장 오래된 데이터 제거
-        }
-        
-        return {
-          ...dataset,
-          data: newData
-        };
       });
-      
-      return {
-        labels: newLabels,
-        datasets: newDatasets
-      };
-    });
-  };
-  
-  /**
-   * 백엔드에서 집계된 청산 데이터를 가져옵니다. (Fallback)
-   */
-  const fetchLiquidationData = async () => {
-    try {
-      setLoading(true);
-      const response = await axios.get('http://localhost:8000/api/liquidations/aggregated?limit=60');
-      const liquidationData = response.data;
-      
-      if (liquidationData && liquidationData.length > 0) {
-        processChartData(liquidationData);
-      } else {
-        // 데모 데이터 생성 (실제 데이터가 없을 때)
-        const demoData = generateDemoData();
-        processChartData(demoData);
-      }
-      
-      setError(null);
-    } catch (err) {
-      console.error('청산 데이터 가져오기 실패:', err);
-      setError('HTTP API로 청산 데이터를 가져오는데 실패했습니다. 데모 데이터를 표시합니다.');
-      
-      // 에러 시에도 데모 데이터 표시
-      const demoData = generateDemoData();
-      processChartData(demoData);
-    } finally {
-      setLoading(false);
     }
+    
+    // 2. 5분 간격 타임라인 데이터 업데이트
+    updateTimelineData(newDataPoint);
   };
 
+  /**
+   * 5분 간격 타임라인 데이터 업데이트
+   */
+  const updateTimelineData = (newDataPoint) => {
+    const timestamp = newDataPoint.timestamp || Date.now();
+    // 5분 간격으로 반올림 (예: 14:32 -> 14:30, 14:37 -> 14:35)
+    const fiveMinuteSlot = Math.floor(timestamp / (5 * 60 * 1000)) * (5 * 60 * 1000);
+    
+    setTimelineData(prev => {
+      const existingSlotIndex = prev.findIndex(item => item.timestamp === fiveMinuteSlot);
+      
+      if (existingSlotIndex >= 0) {
+        // 기존 슬롯 업데이트
+        const updated = [...prev];
+        const slot = { ...updated[existingSlotIndex] };
+        
+        Object.entries(newDataPoint.exchanges).forEach(([exchange, data]) => {
+          if (!slot.exchanges[exchange]) {
+            slot.exchanges[exchange] = { long: 0, short: 0, count: 0 };
+          }
+          slot.exchanges[exchange].long += data.long_volume || 0;
+          slot.exchanges[exchange].short += data.short_volume || 0;
+          slot.exchanges[exchange].count += (data.long_count || 0) + (data.short_count || 0);
+        });
+        
+        updated[existingSlotIndex] = slot;
+        return updated;
+      } else {
+        // 새로운 슬롯 생성
+        const newSlot = {
+          timestamp: fiveMinuteSlot,
+          exchanges: {}
+        };
+        
+        Object.entries(newDataPoint.exchanges).forEach(([exchange, data]) => {
+          newSlot.exchanges[exchange] = {
+            long: data.long_volume || 0,
+            short: data.short_volume || 0,
+            count: (data.long_count || 0) + (data.short_count || 0)
+          };
+        });
+        
+        const updated = [...prev, newSlot];
+        // 시간순 정렬 및 최근 2시간만 유지
+        const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+        return updated
+          .filter(item => item.timestamp >= twoHoursAgo)
+          .sort((a, b) => a.timestamp - b.timestamp);
+      }
+    });
+    
+    // 차트 업데이트
+    processTimelineChart();
+  };
+  
   /**
    * 데모 청산 데이터를 생성합니다.
    */
@@ -246,11 +257,13 @@ function LiquidationChart() {
   };
 
   /**
-   * 청산 데이터를 Chart.js 형식으로 변환합니다.
+   * 타임라인 차트 처리 (5분 간격 누적 차트)
    */
-  const processChartData = (liquidationData) => {
-    // 시간 라벨 생성
-    const labels = liquidationData.map(item => {
+  const processTimelineChart = () => {
+    if (timelineData.length === 0) return;
+
+    // 시간 라벨 생성 (HH:MM 형식)
+    const labels = timelineData.map(item => {
       const date = new Date(item.timestamp);
       return date.toLocaleTimeString('ko-KR', { 
         hour: '2-digit', 
@@ -259,43 +272,37 @@ function LiquidationChart() {
       });
     });
 
-    // 거래소별 데이터셋 생성
-    const datasets = [];
     const exchanges = ['binance', 'bybit', 'okx', 'bitmex', 'bitget', 'hyperliquid'];
-    
+    const datasets = [];
+
+    // 거래소별 Long 데이터셋
     exchanges.forEach(exchange => {
       if (!selectedExchanges[exchange]) return;
       
-      // Long 포지션 청산 (양수로 표시)
-      const longData = liquidationData.map(item => {
-        const exchangeData = item.exchanges[exchange];
-        return exchangeData ? exchangeData.long_volume / 1000 : 0; // USDT를 K 단위로 변환
-      });
-      
-      // Short 포지션 청산 (음수로 표시)
-      const shortData = liquidationData.map(item => {
-        const exchangeData = item.exchanges[exchange];
-        return exchangeData ? -(exchangeData.short_volume / 1000) : 0; // 음수로 변환
-      });
-      
       datasets.push(
-        // Long 데이터셋
+        // Long 포지션
         {
           label: `${exchange.toUpperCase()} Long`,
-          data: longData,
+          data: timelineData.map(item => {
+            const exchangeData = item.exchanges[exchange];
+            return exchangeData ? exchangeData.long / 1000 : 0; // K 단위
+          }),
           backgroundColor: exchangeColors[exchange].long,
           borderColor: exchangeColors[exchange].long,
           borderWidth: 1,
-          stack: exchange, // 같은 거래소끼리 스택
+          stack: 'positive',
         },
-        // Short 데이터셋
+        // Short 포지션 (음수)
         {
           label: `${exchange.toUpperCase()} Short`,
-          data: shortData,
+          data: timelineData.map(item => {
+            const exchangeData = item.exchanges[exchange];
+            return exchangeData ? -(exchangeData.short / 1000) : 0; // K 단위, 음수
+          }),
           backgroundColor: exchangeColors[exchange].short,
           borderColor: exchangeColors[exchange].short,
           borderWidth: 1,
-          stack: exchange, // 같은 거래소끼리 스택
+          stack: 'negative',
         }
       );
     });
@@ -316,7 +323,7 @@ function LiquidationChart() {
     }));
   };
 
-  // 차트 옵션 설정
+  // 차트 옵션 설정 (누적 바 차트)
   const options = {
     responsive: true,
     maintainAspectRatio: false,
@@ -332,7 +339,7 @@ function LiquidationChart() {
       },
       title: {
         display: true,
-        text: '암호화폐 청산 데이터 (1분 간격)',
+        text: '5분 간격 누적 청산량 (최근 2시간)',
         font: {
           size: 16,
           weight: 'bold'
@@ -345,21 +352,22 @@ function LiquidationChart() {
           },
           label: (context) => {
             const value = Math.abs(context.parsed.y);
-            const isLong = context.parsed.y >= 0;
-            const side = isLong ? 'Long' : 'Short';
-            return `${context.dataset.label}: ${value.toLocaleString()}K USDT ${side}`;
+            const label = context.dataset.label;
+            return `${label}: ${value.toLocaleString()}K USDT`;
           }
         }
       }
     },
     scales: {
       x: {
+        stacked: true,
         title: {
           display: true,
           text: '시간'
         }
       },
       y: {
+        stacked: true,
         title: {
           display: true,
           text: '청산량 (K USDT)'
@@ -370,16 +378,7 @@ function LiquidationChart() {
           }
         }
       }
-    },
-    interaction: {
-      mode: 'index',
-      intersect: false,
-    },
-    elements: {
-      bar: {
-        borderWidth: 1,
-      },
-    },
+    }
   };
 
   if (loading && !chartData) {
@@ -399,14 +398,55 @@ function LiquidationChart() {
   }
 
   return (
-    <div style={{ padding: '15px', border: '1px solid #333', borderRadius: '8px', backgroundColor: '#1a1a1a' }}>
-      <div style={{ marginBottom: '15px' }}>
-        <h3 style={{ color: 'white', marginBottom: '10px' }}>청산 데이터</h3>
-        
-        {/* 거래소 선택 체크박스 */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
+    <div style={{ padding: '15px', border: '1px solid #333', borderRadius: '8px', backgroundColor: '#1a1a1a', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* 상단: 실시간 청산 스트림 */}
+      <div style={{ flex: 1, minHeight: '200px', maxHeight: '300px', overflowY: 'auto', border: '1px solid #444', borderRadius: '6px', padding: '10px', backgroundColor: '#2a2a2a' }}>
+        <h3 style={{ color: 'white', marginBottom: '10px', textAlign: 'center' }}>실시간 청산 스트림 (최근 20개)</h3>
+        {recentLiquidations.length === 0 ? (
+          <p style={{ color: '#888', textAlign: 'center' }}>실시간 청산 데이터 대기 중...</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column-reverse' }}> {/* 최신 데이터가 아래로 오도록 */}
+            {recentLiquidations.map((event) => (
+              <div key={event.id} style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                padding: '8px', 
+                borderBottom: '1px solid #333',
+                backgroundColor: event.longVolume > event.shortVolume ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', // Long/Short에 따라 배경색
+                animation: 'fadeIn 0.5s ease-out'
+              }}>
+                <span style={{ color: '#bbb', fontSize: '12px', flex: 1 }}>
+                  {new Date(event.timestamp).toLocaleTimeString('ko-KR')}
+                </span>
+                <span style={{ color: '#fff', fontWeight: 'bold', flex: 1 }}>
+                  {event.exchange.toUpperCase()}
+                </span>
+                <span style={{ color: '#10B981', flex: 1, textAlign: 'right' }}>
+                  L: {event.longVolume > 0 ? `${(event.longVolume / 1000).toFixed(1)}K` : '-'}
+                </span>
+                <span style={{ color: '#EF4444', flex: 1, textAlign: 'right' }}>
+                  S: {event.shortVolume > 0 ? `${(event.shortVolume / 1000).toFixed(1)}K` : '-'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 하단: 5분 간격 누적 바 차트 */}
+      <div style={{ flex: 2, height: '400px', position: 'relative' }}>
+        {chartData && <Bar data={chartData} options={options} />}
+      </div>
+      
+      {/* 거래소 선택 체크박스 */}
+      <div style={{ marginTop: '15px' }}>
+        <div style={{ color: 'white', fontSize: '14px', marginBottom: '8px', fontWeight: 'bold' }}>
+          거래소 선택:
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
           {Object.keys(selectedExchanges).map(exchange => (
-            <label key={exchange} style={{ color: 'white', fontSize: '14px', display: 'flex', alignItems: 'center' }}>
+            <label key={exchange} style={{ color: 'white', fontSize: '13px', display: 'flex', alignItems: 'center' }}>
               <input
                 type="checkbox"
                 checked={selectedExchanges[exchange]}
@@ -417,15 +457,6 @@ function LiquidationChart() {
             </label>
           ))}
         </div>
-        
-        <div style={{ fontSize: '12px', color: '#888', marginBottom: '10px' }}>
-          <span style={{ color: '#10B981' }}>■</span> Long 청산 (위쪽) / 
-          <span style={{ color: '#EF4444', marginLeft: '10px' }}>■</span> Short 청산 (아래쪽)
-        </div>
-      </div>
-      
-      <div style={{ height: '400px' }}>
-        {chartData && <Bar data={chartData} options={options} />}
       </div>
       
       {error && (
