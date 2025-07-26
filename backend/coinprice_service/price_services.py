@@ -16,7 +16,7 @@ import json
 
 # API 캐싱을 위한 전역 변수들
 _api_cache = {}
-_cache_ttl = 30  # 30초 캐시 유지
+_cache_ttl = 5  # 5초 캐시 유지 (실시간 업데이트를 위해 단축)
 
 def _get_cache_key(exchange: str, symbol: str) -> str:
     """캐시 키 생성"""

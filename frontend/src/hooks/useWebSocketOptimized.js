@@ -91,8 +91,8 @@ const useWebSocketOptimized = (url, options = {}) => {
       console.log('WebSocket raw message:', message);
       
       if (Array.isArray(message) && message.length > 0) {
-        console.log(`Received ${message.length} coins data`);
-        console.log('First coin sample:', message[0]);
+        console.log(`✅ Received ${message.length} coins data`);
+        console.log('📊 First coin sample:', message[0]);
         batchQueueRef.current.push(message);
         
         // 배치 크기가 임계값에 도달하면 즉시 처리

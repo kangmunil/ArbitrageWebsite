@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useCallback, memo } from 'react';
 import './CoinTable.css';
 import { optimizedFilter, optimizedSort, createDebouncedSearch } from '../utils/dataOptimization';
 import cacheManager, { cachedFetch } from '../utils/cacheManager';
+import PriceCell from './PriceCell';
+import PremiumCell from './PremiumCell';
 
 // 개별 코인 행 컴포넌트 메모이제이션
 const CoinRow = memo(({ coin, index, getCoinName, formatPrice, exchangeDisplayNames, selectedDomesticExchange, selectedGlobalExchange }) => {
@@ -50,21 +52,24 @@ const CoinRow = memo(({ coin, index, getCoinName, formatPrice, exchangeDisplayNa
       {/* 현재가 */}
       <div className="col-span-3 flex flex-col items-end">
         <span className="font-medium text-white">
-          {coin.domestic_price ? formatPrice(coin.domestic_price, '₩') : 'N/A'}
+          <PriceCell 
+            price={coin.domestic_price} 
+            currency="₩" 
+            formatPrice={formatPrice} 
+          />
         </span>
         <span className="text-gray-400">
-          {coin.global_price ? formatPrice(coin.global_price, '$') : 'N/A'}
+          <PriceCell 
+            price={coin.global_price} 
+            currency="$" 
+            formatPrice={formatPrice} 
+          />
         </span>
       </div>
 
       {/* 김프 */}
       <div className="col-span-2 flex flex-col items-end">
-        <span className={`${
-          coin.premium > 0 ? 'text-emerald-400' : 
-          coin.premium < 0 ? 'text-red-400' : 'text-gray-400'
-        }`}>
-          {coin.premium !== null ? `${coin.premium > 0 ? '+' : ''}${coin.premium.toFixed(2)}%` : 'N/A'}
-        </span>
+        <PremiumCell premium={coin.premium} />
       </div>
 
       {/* 전일대비 */}
@@ -109,7 +114,7 @@ CoinRow.displayName = 'CoinRow';
  * @param {Function} props.setSelectedGlobalExchange - 해외 거래소 선택 변경 함수
  * @returns {JSX.Element} 코인 테이블 UI
  */
-const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDomesticExchange, selectedGlobalExchange, setSelectedGlobalExchange, connectionStatus, lastUpdate, getConnectionStatusColor, reconnect }) => {
+const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDomesticExchange, selectedGlobalExchange, setSelectedGlobalExchange, connectionStatus, lastUpdate, getConnectionStatusColor, reconnect, refresh, error }) => {
   // 거래소 코드에서 표시명으로의 매핑
   const exchangeDisplayNames = {
     upbit: 'Upbit',
@@ -188,7 +193,15 @@ const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDom
       return [];
     }
 
-    let data = allCoinsData.map(coin => {
+    let data = allCoinsData.map((coin, index) => {
+      if (index === 0) { // 첫 번째 코인만 로그
+        console.log('💎 CoinTable processing:', coin.symbol, {
+          upbit_price: coin.upbit_price,
+          binance_price: coin.binance_price,
+          usdt_krw_rate: coin.usdt_krw_rate,
+          timestamp: new Date().toLocaleTimeString()
+        });
+      }
       
       // 선택된 국내 거래소 가격, 거래량, 변동률
       const domesticPriceKey = `${selectedDomesticExchange}_price`;
@@ -206,11 +219,10 @@ const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDom
       const globalVolume = coin[globalVolumeKey];
       const globalChangePercent = coin[globalChangePercentKey];
       
-
-
+      // 김치 프리미엄 계산 - USDT/KRW 환율 사용
       let premium = null;
-      if (domesticPrice !== null && globalPrice !== null && coin.exchange_rate !== null) {
-        const globalPriceInKRW = globalPrice * coin.exchange_rate;
+      if (domesticPrice !== null && globalPrice !== null && coin.usdt_krw_rate !== null) {
+        const globalPriceInKRW = globalPrice * coin.usdt_krw_rate;
         if (globalPriceInKRW !== 0) {
           premium = ((domesticPrice - globalPriceInKRW) / globalPriceInKRW) * 100;
           premium = parseFloat(premium.toFixed(2));
@@ -227,10 +239,7 @@ const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDom
         global_change_percent: globalChangePercent,
         premium: premium,
       };
-    }); // 임시로 필터 비활성화
-    
-    // 원래 필터 (임시 비활성화)
-    // .filter(coin => coin.domestic_price !== null && coin.global_price !== null);
+    }).filter(coin => coin.domestic_price !== null && coin.global_price !== null); // 필터 다시 활성화
     
 
     // 최적화된 검색어 필터링
@@ -345,16 +354,38 @@ const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDom
           <span style={{ color: getConnectionStatusColor && getConnectionStatusColor(connectionStatus) }}>
             ● {connectionStatus ? connectionStatus.toUpperCase() : 'UNKNOWN'}
           </span>
-          <span className="text-green-400">
-            마지막 업데이트: {lastUpdate ? lastUpdate.toLocaleTimeString('ko-KR') : '대기 중'} | 코인 수: {displayData.length}개
+          <span className="text-green-400 flex items-center space-x-2">
+            <span>마지막 업데이트: {lastUpdate ? lastUpdate.toLocaleTimeString('ko-KR') : '대기 중'}</span>
+            <span>|</span>
+            <span>코인 수: {displayData.length}개</span>
+            {connectionStatus === 'connected' && (
+              <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+            )}
           </span>
-          {connectionStatus === 'failed' && reconnect && (
-            <button 
-              onClick={reconnect}
-              className="text-xs bg-blue-600 px-2 py-1 rounded hover:bg-blue-700"
-            >
-              재연결
-            </button>
+          {(connectionStatus === 'failed' || connectionStatus === 'error') && (
+            <div className="flex space-x-2">
+              {reconnect && (
+                <button 
+                  onClick={reconnect}
+                  className="text-xs bg-blue-600 px-2 py-1 rounded hover:bg-blue-700"
+                >
+                  재연결
+                </button>
+              )}
+              {refresh && (
+                <button 
+                  onClick={refresh}
+                  className="text-xs bg-green-600 px-2 py-1 rounded hover:bg-green-700"
+                >
+                  새로고침
+                </button>
+              )}
+            </div>
+          )}
+          {error && (
+            <span className="text-xs text-red-400">
+              오류: {error}
+            </span>
           )}
         </div>
         
