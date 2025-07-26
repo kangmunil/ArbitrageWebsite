@@ -216,8 +216,11 @@ export const useLiquidations = (windowMin = 5) => {
               }
             }
             
-            // 실시간 업데이트 (전체 데이터 다시 fetch)
-            fetchData();
+            // 실시간 업데이트 빈도 제한: 마지막 업데이트로부터 5초 이상 경과한 경우만 새로 fetch
+            const now = Date.now();
+            if (!cacheRef.current || (now - cacheRef.current.timestamp > 5000)) {
+              fetchData();
+            }
           }
         } catch (err) {
           console.error('WebSocket message parse error:', err);
@@ -253,8 +256,8 @@ export const useLiquidations = (windowMin = 5) => {
     // WebSocket 연결
     connectWebSocket();
     
-    // 15초마다 polling
-    intervalRef.current = setInterval(fetchData, 15000);
+    // 60초마다 polling (차트 안정성을 위해 간격 증가)
+    intervalRef.current = setInterval(fetchData, 60000);
     
     return () => {
       if (intervalRef.current) {

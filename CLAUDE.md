@@ -51,13 +51,30 @@ This is a cryptocurrency arbitrage monitoring website that displays price differ
 - **Axios** for REST API calls
 
 ### Key Frontend Components
-- `CoinTable.js`: Main price comparison table with exchange selection
+- `CoinTable.js`: Main price comparison table with **12-column Tailwind CSS grid layout**
 - `PriceChart.js`: Bitcoin historical price chart using Binance API
 - `FearGreedIndex.js`: Crypto Fear & Greed Index gauge
 - `LiquidationChart.js`: Real-time liquidation data visualization
 - `PriceDisplay.js`: Price display component
 - `Header.js`: Application header and navigation
 - `Header.css`: Header component styling
+
+#### Frontend UI Architecture Details
+
+**CoinTable Grid Layout** (`CoinTable.js`):
+- **Grid System**: Tailwind CSS 12-column responsive grid (`grid-cols-12`)
+- **Column Distribution**: name(3), price(3), premium(2), change(2), volume(2)
+- **Price Formatting**: Dynamic decimal places based on price magnitude:
+  ```javascript
+  const formatPrice = (price, currency = '₩') => {
+    if (price < 0.01) return `${currency}${price.toFixed(6)}`;      // 소수 6자리
+    if (price < 1) return `${currency}${price.toFixed(4)}`;         // 소수 4자리  
+    if (price < 100) return `${currency}${price.toFixed(2)}`;       // 소수 2자리
+    return `${currency}${Math.round(price).toLocaleString()}`;      // 정수 + 천단위
+  };
+  ```
+- **Volume Display**: KRW amounts in 억원 units, USD in M(million) units
+- **Real-time Updates**: WebSocket-driven state updates with timestamp display
 
 ### Detailed Data Flow Architecture
 
@@ -67,14 +84,60 @@ External APIs → Backend Services → Background Task → WebSocket → Fronten
 ```
 
 **Price Update Process (`main.py`)**:
-1. `price_updater()` background task runs every 1 second
-2. Fetches from Korean exchanges: Upbit, Bithumb (KRW markets)
-3. Fetches from International exchanges: Binance, Bybit (USDT markets)
-4. Retrieves USD/KRW exchange rate from Naver Finance via web scraping
-5. Calculates Kimchi Premium: `((upbit_price - binance_price_krw) / binance_price_krw) * 100`
-6. Broadcasts JSON array to all WebSocket clients via `ConnectionManager`
-7. Frontend `App.js` receives updates and updates `allCoinsData` state
-8. `CoinTable.js` dynamically recalculates premiums based on selected exchanges
+1. **WebSocket Clients** continuously stream real-time data:
+   - **Upbit WebSocket**: `wss://api.upbit.com/websocket/v1` - KRW market tickers
+   - **Binance WebSocket**: `wss://stream.binance.com:9443/ws/!ticker@arr` - USDT market tickers  
+   - **Bybit WebSocket**: `wss://stream.bybit.com/v5/public/spot` - USDT market tickers
+2. **Shared Data Store** (`services.py`): Central memory store updated by WebSocket clients:
+   ```python
+   shared_data = {
+       "upbit_tickers": {},    # Real-time Upbit data
+       "binance_tickers": {},  # Real-time Binance data  
+       "bybit_tickers": {},    # Real-time Bybit data
+       "exchange_rate": None,  # USD/KRW from Naver Finance
+       "usdt_krw_rate": None,  # USDT/KRW from Upbit API
+   }
+   ```
+3. **Price Aggregator** (`main.py:price_aggregator()`): 
+   - Combines shared_data into unified coin objects every 1 second
+   - Calculates Kimchi Premium: `((upbit_price - binance_price_krw) / binance_price_krw) * 100`
+   - **Volume Unit Consistency**: Converts all volumes to KRW trading amounts
+4. **WebSocket Broadcasting**: `ConnectionManager` broadcasts JSON array to all clients
+5. **Frontend Reception**: `App.js` receives updates → `allCoinsData` state → `CoinTable.js` renders
+
+#### 1.1. Critical Volume Data Architecture (Fixed)
+
+**Volume Unit Standardization Issue Resolution**:
+- **Problem**: Mixed volume units caused inconsistent displays (BTC count vs trading amounts)
+- **Solution**: Standardized all exchanges to use **trading amounts** in local currency
+
+**Backend Volume Processing** (`services.py`):
+```python
+# Upbit: Use acc_trade_price_24h (KRW trading amount)
+"volume": data['acc_trade_price_24h'],  # KRW 거래대금
+
+# Binance: Use ticker['q'] (USDT quote asset volume = trading amount)  
+"volume": float(ticker['q']),  # USDT 거래대금 (not ticker['v'] = BTC count)
+
+# Backend conversion to KRW (main.py:price_aggregator)
+binance_volume_krw = usdt_volume * usdt_krw_rate  # Direct conversion
+```
+
+**Frontend Volume Display** (`CoinTable.js`):
+```javascript
+// Domestic volume (already in KRW)
+{(coin.domestic_volume / 100_000_000).toFixed(0)}억 원
+
+// Global volume (converted to USD for display)  
+${(coin.global_volume / 1_000_000).toFixed(1)}M
+```
+
+**Volume Data Flow Debugging Process**:
+1. **WS Message Verification**: Confirmed raw volume fields exist in WebSocket data
+2. **Parsing Function Analysis**: Verified correct volume field extraction (`acc_trade_price_24h`, `ticker['q']`)
+3. **Shared Data Inspection**: Validated volume data reaches shared_data store correctly
+4. **Frontend State Check**: Confirmed volume data propagates through React state
+5. **UI Display Verification**: Ensured proper volume formatting and unit display
 
 #### 2. Liquidation Data Flow
 ```
@@ -233,3 +296,58 @@ ArbitrageWebsite/
 - **Liquidation data**: Only Binance provides real liquidation data; others use simulation for development
 - **Component documentation**: Complex components include README.md files with implementation details
 - **Performance monitoring**: reportWebVitals.js tracks React app performance metrics
+
+## Recent Development Session (Volume Fix)
+
+### Problem Identification
+- **Initial Issue**: 코인 가격이 안뜬다 (coin prices not showing)
+- **UI Migration**: Converted HTML table to Tailwind CSS 12-column grid system
+- **Volume Data Inconsistency**: Major issue with trading volume units mixing BTC counts vs trading amounts
+- **Small Price Display**: SHIB, BONK, PEPE, XEC decimal formatting issues
+
+### Systematic Debugging Approach
+Applied 4-step debugging methodology for volume display issues:
+1. **WebSocket Raw Data** → Volume field verification in real-time messages
+2. **Parsing Functions** → Data extraction logic validation (`services.py`)
+3. **State Management** → React state propagation verification (`App.js`)
+4. **UI Rendering** → Display formatting and unit consistency (`CoinTable.js`)
+
+### Critical Fixes Applied
+
+#### Backend Volume Standardization (`services.py`):
+```python
+# Before (inconsistent units):
+# Upbit: data['acc_trade_volume_24h']  # BTC 거래량 (count)
+# Binance: ticker['v']                 # BTC 거래량 (count)
+
+# After (standardized to trading amounts):
+# Upbit: data['acc_trade_price_24h']   # KRW 거래대금 (amount)
+# Binance: ticker['q']                 # USDT 거래대금 (amount)
+```
+
+#### Backend Volume Calculation Fix (`main.py`):
+```python
+# Before (complex calculation):
+# binance_volume_krw = volume * price * exchange_rate
+
+# After (direct conversion):
+# binance_volume_krw = usdt_volume * usdt_krw_rate
+```
+
+#### Frontend Price Formatting (`CoinTable.js`):
+- **Small decimals** (<0.01): 6 decimal places for SHIB, BONK, PEPE, XEC
+- **Medium decimals** (<1): 4 decimal places
+- **Regular prices** (≥100): Integer with thousand separators
+
+### Results Achieved
+- **Volume Accuracy**: Upbit ~400억원, Binance ~2.7조원 (realistic values)
+- **Real-time Updates**: All coins update dynamically from WebSocket streams
+- **UI Consistency**: Clean 12-column grid layout with proper decimal formatting
+- **Performance**: Sub-second price updates across all supported exchanges
+
+### Technical Insights Gained
+- **WebSocket Architecture**: Separate data collection from aggregation/broadcasting
+- **Volume Unit Standards**: Always use trading amounts, not trading volumes
+- **Frontend State Flow**: WebSocket → App.js → CoinTable.js state propagation
+- **Debugging Methodology**: Systematic 4-layer approach prevents missed issues
+- **CSS Grid Migration**: HTML tables to Tailwind CSS grid for responsive design

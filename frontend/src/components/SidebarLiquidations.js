@@ -1,11 +1,38 @@
+import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { useLiquidations } from '../hooks/useLiquidations';
 
 const SidebarLiquidations = () => {
   const { trend, error, lastUpdate } = useLiquidations(5);
 
+  // 차트 데이터 메모이제이션
+  const chartData5min = useMemo(() => 
+    trend.map(item => ({
+      ...item,
+      exchange: item.exchange.startsWith('Hyperl') ? 'HL' : item.exchange
+    })), [trend]
+  );
+
+  const chartData1hour = useMemo(() => 
+    trend.map(item => ({
+      ...item,
+      exchange: item.exchange.startsWith('Hyperl') ? 'HL' : item.exchange,
+      long: item.long * 12, // 1시간 = 12 x 5분 (시뮬레이션)
+      short: item.short * 12
+    })), [trend]
+  );
+
   return (
-    <aside className="relative w-80 px-4 py-3 text-base text-white mx-auto">
+    <aside style={{ 
+      width: '280px', // 더 적절한 너비로 조정
+      padding: '15px', 
+      border: '1px solid #333', 
+      borderRadius: '8px', 
+      backgroundColor: '#1a1a1a',
+      color: 'white',
+      margin: '0 auto',
+      minHeight: '300px'
+    }}>
       {/* 헤더 */}
       <header className="mb-4">
         <h2 className="font-semibold text-cyan-300 text-center">실시간 청산 데이터</h2>
@@ -28,10 +55,7 @@ const SidebarLiquidations = () => {
         </p>
         <ResponsiveContainer width="100%" height={120}>
           <BarChart
-            data={trend.map(item => ({
-              ...item,
-              exchange: item.exchange.startsWith('Hyperl') ? 'HL' : item.exchange
-            }))}
+            data={chartData5min}
             layout="vertical"
             barCategoryGap={6}
             margin={{ top: 2, right: 15, left: 15, bottom: 2 }}
@@ -71,12 +95,7 @@ const SidebarLiquidations = () => {
         </p>
         <ResponsiveContainer width="100%" height={120}>
           <BarChart
-            data={trend.map(item => ({
-              ...item,
-              exchange: item.exchange.startsWith('Hyperl') ? 'HL' : item.exchange,
-              long: item.long * 12, // 1시간 = 12 x 5분 (시뮬레이션)
-              short: item.short * 12
-            }))}
+            data={chartData1hour}
             layout="vertical"
             barCategoryGap={6}
             margin={{ top: 2, right: 15, left: 15, bottom: 2 }}

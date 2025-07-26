@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Debug</title>
+</head>
+<body>
+    <h1>WebSocket 연결 디버그</h1>
+    <div id="status">연결 중...</div>
+    <div id="messages"></div>
+
+    <script>
+        const ws = new WebSocket('ws://localhost:8000/ws/prices');
+        const statusDiv = document.getElementById('status');
+        const messagesDiv = document.getElementById('messages');
+        
+        ws.onopen = function(event) {
+            statusDiv.innerHTML = '✅ 연결됨';
+            console.log('WebSocket connected');
+        };
+        
+        ws.onmessage = function(event) {
+            console.log('Raw message:', event.data);
+            try {
+                const data = JSON.parse(event.data);
+                console.log('Parsed data:', data);
+                messagesDiv.innerHTML = `<pre>마지막 메시지 (${new Date().toLocaleTimeString()}):\n${JSON.stringify(data, null, 2)}</pre>`;
+            } catch (error) {
+                console.error('Parse error:', error);
+                messagesDiv.innerHTML = `파싱 오류: ${error.message}`;
+            }
+        };
+        
+        ws.onerror = function(error) {
+            statusDiv.innerHTML = '❌ 오류: ' + error;
+            console.error('WebSocket error:', error);
+        };
+        
+        ws.onclose = function(event) {
+            statusDiv.innerHTML = '🔌 연결 종료: ' + event.code + ' ' + event.reason;
+            console.log('WebSocket closed:', event);
+        };
+    </script>
+</body>
+</html>

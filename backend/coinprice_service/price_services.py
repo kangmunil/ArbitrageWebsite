@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional
 import requests
 import aiohttp
+from aiohttp import ClientTimeout
 import asyncio
 from datetime import datetime, timedelta
 import time
@@ -612,7 +613,7 @@ async def async_get_upbit_ticker(session: aiohttp.ClientSession, symbol: str) ->
             else:
                 print(f"Warning: Empty data received for Upbit {symbol}")
                 return None
-    except aiohttp.ClientTimeout:
+    except aiohttp.ClientTimeout:  # type: ignore
         print(f"Warning: Timeout fetching Upbit ticker for {symbol}")
         return None
     except aiohttp.ClientResponseError as e:
@@ -654,7 +655,7 @@ async def async_get_binance_ticker(session: aiohttp.ClientSession, symbol: str) 
             # 캐시에 저장
             _set_cached_data(cache_key, result)
             return result
-    except aiohttp.ClientTimeout:
+    except aiohttp.ClientTimeout:  # type: ignore
         print(f"Warning: Timeout fetching Binance ticker for {symbol}")
         return None
     except aiohttp.ClientResponseError as e:
@@ -697,7 +698,7 @@ async def async_get_bithumb_ticker(session: aiohttp.ClientSession, symbol: str) 
             else:
                 print(f"Warning: Bithumb does not support symbol {symbol} or API error")
                 return None
-    except aiohttp.ClientTimeout:
+    except aiohttp.ClientTimeout:  # type: ignore
         print(f"Warning: Timeout fetching Bithumb ticker for {symbol}")
         return None
     except aiohttp.ClientResponseError as e:
@@ -740,7 +741,7 @@ async def async_get_bybit_ticker(session: aiohttp.ClientSession, symbol: str) ->
             else:
                 print(f"Warning: Bybit does not support symbol {symbol}USDT or API error")
                 return None
-    except aiohttp.ClientTimeout:
+    except aiohttp.ClientTimeout:  # type: ignore
         print(f"Warning: Timeout fetching Bybit ticker for {symbol}")
         return None
     except aiohttp.ClientResponseError as e:

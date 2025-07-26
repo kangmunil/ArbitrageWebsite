@@ -1,13 +1,16 @@
 import asyncio
 import json
 import logging
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
+from typing import List, Dict
+from sqlalchemy.orm import Session
 
 from . import services
 from . import liquidation_services # 청산 서비스도 함께 실행
 from .liquidation_services import get_aggregated_liquidation_data
+from .database import get_db
+from .models import Cryptocurrency
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,7 +48,8 @@ class ConnectionManager:
         for client in disconnected_clients:
             self.disconnect(client)
 
-manager = ConnectionManager()
+price_manager = ConnectionManager()
+liquidation_manager = ConnectionManager()
 
 # --- Data Aggregator and Broadcaster ---
 async def price_aggregator():
@@ -64,6 +68,7 @@ async def price_aggregator():
         usdt_krw_rate = services.shared_data["usdt_krw_rate"]
 
         if not upbit_tickers or not exchange_rate:
+            logger.warning(f"Missing data - upbit: {len(upbit_tickers)}, binance: {len(binance_tickers)}, exchange_rate: {exchange_rate}, usdt_krw: {usdt_krw_rate}")
             continue
 
         for symbol, upbit_ticker in upbit_tickers.items():
@@ -112,7 +117,10 @@ async def price_aggregator():
 
 
         if all_coins_data:
-            await manager.broadcast(json.dumps(all_coins_data))
+            logger.info(f"Broadcasting {len(all_coins_data)} coins to {len(price_manager.active_connections)} clients")
+            await price_manager.broadcast(json.dumps(all_coins_data))
+        else:
+            logger.warning(f"No coin data to broadcast - upbit: {len(upbit_tickers)}, binance: {len(binance_tickers)}, exchange_rate: {exchange_rate}")
 
 
 # --- FastAPI Events ---
@@ -133,7 +141,7 @@ async def startup_event():
 
     # 청산 데이터 수집 시작
     logger.info("청산 데이터 수집을 시작합니다.")
-    liquidation_services.set_websocket_manager(manager) # 청산 서비스에 동일한 매니저 사용
+    liquidation_services.set_websocket_manager(liquidation_manager) # 청산 서비스에 동일한 매니저 사용
     asyncio.create_task(liquidation_services.start_liquidation_collection())
 
 
@@ -141,8 +149,8 @@ async def startup_event():
 @app.websocket("/ws/prices")
 async def websocket_prices_endpoint(websocket: WebSocket):
     """실시간 가격 데이터를 위한 WebSocket 엔드포인트."""
-    await manager.connect(websocket)
-    logger.info(f"클라이언트 연결: {websocket.client}. 총 연결: {len(manager.active_connections)}")
+    await price_manager.connect(websocket)
+    logger.info(f"클라이언트 연결: {websocket.client}. 총 연결: {len(price_manager.active_connections)}")
     try:
         while True:
             # 클라이언트로부터 메시지를 받을 필요는 없지만, 연결 유지를 위해 필요
@@ -150,14 +158,13 @@ async def websocket_prices_endpoint(websocket: WebSocket):
     except Exception:
         logger.info(f"클라이언트 연결 해제: {websocket.client}")
     finally:
-        manager.disconnect(websocket)
+        price_manager.disconnect(websocket)
 
 @app.websocket("/ws/liquidations")
 async def websocket_liquidations_endpoint(websocket: WebSocket):
     """실시간 청산 데이터를 위한 WebSocket 엔드포인트."""
-    # 가격 매니저를 청산 데이터에서도 공유하여 사용
-    await manager.connect(websocket)
-    logger.info(f"청산 클라이언트 연결: {websocket.client}. 총 연결: {len(manager.active_connections)}")
+    await liquidation_manager.connect(websocket)
+    logger.info(f"청산 클라이언트 연결: {websocket.client}. 총 연결: {len(liquidation_manager.active_connections)}")
     try:
         # 초기 데이터 전송
         initial_data = liquidation_services.get_aggregated_liquidation_data(limit=60)
@@ -167,7 +174,7 @@ async def websocket_liquidations_endpoint(websocket: WebSocket):
     except Exception:
         logger.info(f"청산 클라이언트 연결 해제: {websocket.client}")
     finally:
-        manager.disconnect(websocket)
+        liquidation_manager.disconnect(websocket)
 
 # --- REST API Endpoints (보조용) ---
 @app.get("/")
@@ -183,3 +190,30 @@ async def get_fear_greed_index_data():
 async def get_aggregated_liquidations(limit: int = 60):
     """집계된 청산 데이터를 조회합니다."""
     return get_aggregated_liquidation_data(limit=limit)
+
+@app.get("/api/coin-names")
+async def get_coin_names(db: Session = Depends(get_db)) -> Dict[str, str]:
+    """
+    모든 코인의 심볼 -> 한글명 매핑을 반환합니다.
+    
+    Returns:
+        Dict[str, str]: 심볼 -> 한글명 매핑 딕셔너리
+    """
+    try:
+        # 데이터베이스에서 모든 코인 정보 조회
+        cryptocurrencies = db.query(Cryptocurrency).filter(
+            Cryptocurrency.is_active == True
+        ).all()
+        
+        # 심볼 -> 한글명 매핑 딕셔너리 생성
+        coin_names = {}
+        for crypto in cryptocurrencies:
+            coin_names[crypto.symbol] = crypto.name_ko or crypto.symbol
+        
+        logger.info(f"코인 한글명 {len(coin_names)}개 반환")
+        return coin_names
+        
+    except Exception as e:
+        logger.error(f"코인 한글명 조회 오류: {e}")
+        # 오류 시 빈 딕셔너리 반환
+        return {}

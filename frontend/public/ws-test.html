@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket 직접 테스트</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { padding: 10px; margin: 10px 0; }
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        .message { background: #f8f9fa; padding: 5px; margin: 2px 0; font-size: 12px; }
+        pre { background: #f8f9fa; padding: 10px; max-height: 400px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>🔍 WebSocket 직접 연결 테스트</h1>
+    
+    <div id="status" class="status disconnected">연결 대기 중...</div>
+    
+    <button onclick="connect()">연결</button>
+    <button onclick="disconnect()">연결 해제</button>
+    <button onclick="clearMessages()">메시지 지우기</button>
+    
+    <h3>실시간 메시지:</h3>
+    <div id="messageCount">수신 메시지: 0개</div>
+    <pre id="messages"></pre>
+
+    <script>
+        let ws = null;
+        let messageCount = 0;
+        
+        function updateStatus(text, connected) {
+            const status = document.getElementById('status');
+            status.textContent = text;
+            status.className = 'status ' + (connected ? 'connected' : 'disconnected');
+        }
+        
+        function addMessage(text, type = 'normal') {
+            const messages = document.getElementById('messages');
+            const time = new Date().toLocaleTimeString();
+            messages.textContent += `[${time}] ${text}\n`;
+            messages.scrollTop = messages.scrollHeight;
+            
+            messageCount++;
+            document.getElementById('messageCount').textContent = `수신 메시지: ${messageCount}개`;
+        }
+        
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                addMessage('이미 연결되어 있습니다.');
+                return;
+            }
+            
+            updateStatus('연결 중...', false);
+            addMessage('WebSocket 연결 시도: ws://localhost:8000/ws/prices');
+            
+            ws = new WebSocket('ws://localhost:8000/ws/prices');
+            
+            ws.onopen = function(event) {
+                updateStatus('✅ 연결됨', true);
+                addMessage('WebSocket 연결 성공!');
+            };
+            
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    addMessage(`📊 데이터 수신: ${data.length}개 코인`);
+                    
+                    // 첫 번째 코인 데이터 샘플 표시
+                    if (data.length > 0) {
+                        const sample = data[0];
+                        addMessage(`샘플: ${sample.symbol} - Upbit: ${sample.upbit_price}, Binance: ${sample.binance_price}`);
+                    }
+                } catch (error) {
+                    addMessage(`❌ 데이터 파싱 오류: ${error.message}`);
+                    addMessage(`Raw data: ${event.data.substring(0, 200)}...`);
+                }
+            };
+            
+            ws.onerror = function(error) {
+                updateStatus('❌ 연결 오류', false);
+                addMessage(`WebSocket 오류: ${error}`);
+            };
+            
+            ws.onclose = function(event) {
+                updateStatus('🔌 연결 종료', false);
+                addMessage(`연결 종료: 코드=${event.code}, 이유=${event.reason}`);
+            };
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+        
+        function clearMessages() {
+            document.getElementById('messages').textContent = '';
+            messageCount = 0;
+            document.getElementById('messageCount').textContent = '수신 메시지: 0개';
+        }
+        
+        // 페이지 로드 시 자동 연결
+        window.onload = function() {
+            connect();
+        };
+        
+        // 페이지 언로드 시 연결 해제
+        window.onbeforeunload = function() {
+            disconnect();
+        };
+    </script>
+</body>
+</html>
