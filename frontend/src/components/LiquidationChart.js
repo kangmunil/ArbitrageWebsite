@@ -42,41 +42,59 @@ function LiquidationChart() {
     hyperliquid: true
   }); // 표시할 거래소 선택 상태
   const [recentLiquidations, setRecentLiquidations] = useState([]); // 최근 청산 스트림 (최근 20개)
-  const [timelineData, setTimelineData] = useState([]); // 5분 간격 누적 데이터 (최근 2시간)
+  const [timelineData5min, setTimelineData5min] = useState([]); // 5분 간격 누적 데이터 (최근 2시간)
+  const [timelineData1hour, setTimelineData1hour] = useState([]); // 1시간 간격 누적 데이터 (최근 24시간)
+  const [selectedTimeFrame, setSelectedTimeFrame] = useState('5min'); // '5min' | '1hour'
   
   // 거래소별 색상 설정
   const exchangeColors = {
-    binance: { long: '#10B981', short: '#EF4444' }, // 초록/빨강
+    binance: { long: '#059669', short: '#DC2626' }, // 더 진한 초록/빨강 (가시성 개선)
     bybit: { long: '#34D399', short: '#F87171' },
     okx: { long: '#6EE7B7', short: '#FCA5A5' },
     bitmex: { long: '#A7F3D0', short: '#FEB2B2' },
     bitget: { long: '#D1FAE5', short: '#FECACA' },
-    hyperliquid: { long: '#059669', short: '#DC2626' }
+    hyperliquid: { long: '#10B981', short: '#EF4444' }
   };
 
   useEffect(() => {
+    // 초기 데이터 즉시 로드
+    loadInitialData();
+    
     const cleanupWs = connectWebSocket();
     
-    // 5분마다 타임라인 데이터 정리 (오래된 데이터 제거)
-    const cleanupInterval = setInterval(() => {
+    // 5분 차트 자동 리로드 (5분마다)
+    const refresh5minInterval = setInterval(() => {
+      console.log('🔄 5분 차트 자동 리로드');
       const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-      setTimelineData(prev => prev.filter(item => item.timestamp >= twoHoursAgo));
+      setTimelineData5min(prev => prev.filter(item => item.timestamp >= twoHoursAgo));
+      if (selectedTimeFrame === '5min') {
+        processTimelineChart();
+      }
     }, 5 * 60 * 1000); // 5분마다
+    
+    // 1시간 차트 자동 리로드 (1시간마다)
+    const refresh1hourInterval = setInterval(() => {
+      console.log('🔄 1시간 차트 자동 리로드');
+      const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
+      setTimelineData1hour(prev => prev.filter(item => item.timestamp >= twentyFourHoursAgo));
+      if (selectedTimeFrame === '1hour') {
+        processTimelineChart();
+      }
+    }, 60 * 60 * 1000); // 1시간마다
     
     return () => {
       cleanupWs();
-      clearInterval(cleanupInterval);
+      clearInterval(refresh5minInterval);
+      clearInterval(refresh1hourInterval);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedTimeFrame]);
   
   useEffect(() => {
-    // 선택된 거래소가 변경되면 차트 데이터 업데이트
-    if (chartData) {
-      processTimelineChart();
-    }
+    // 선택된 거래소나 시간 프레임이 변경되면 차트 데이터 업데이트
+    processTimelineChart();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedExchanges, timelineData]);
+  }, [selectedExchanges, selectedTimeFrame, timelineData5min, timelineData1hour]);
 
   /**
    * WebSocket 연결을 설정하여 실시간 청산 데이터를 수신합니다.
@@ -102,10 +120,14 @@ function LiquidationChart() {
           const message = JSON.parse(event.data);
           
           if (message.type === 'liquidation_initial' && message.data) {
-            // 초기 데이터 로드
-            console.log('초기 청산 데이터 수신:', message.data.length, '개 아이템');
-            message.data.forEach(item => updateTimelineData(item));
+            // WebSocket 초기 데이터 로드
+            console.log('📡 WebSocket 초기 청산 데이터 수신:', message.data.length, '개 아이템');
+            message.data.forEach(item => {
+              updateTimelineData5min(item);
+              updateTimelineData1hour(item);
+            });
             setLoading(false);
+            setError(null);
           } else if (message.type === 'liquidation_update' && message.data) {
             // 실시간 업데이트
             console.log('실시간 청산 데이터 업데이트:', message.data);
@@ -165,19 +187,20 @@ function LiquidationChart() {
       });
     }
     
-    // 2. 5분 간격 타임라인 데이터 업데이트
-    updateTimelineData(newDataPoint);
+    // 2. 타임라인 데이터 업데이트 (5분 및 1시간)
+    updateTimelineData5min(newDataPoint);
+    updateTimelineData1hour(newDataPoint);
   };
 
   /**
    * 5분 간격 타임라인 데이터 업데이트
    */
-  const updateTimelineData = (newDataPoint) => {
+  const updateTimelineData5min = (newDataPoint) => {
     const timestamp = newDataPoint.timestamp || Date.now();
     // 5분 간격으로 반올림 (예: 14:32 -> 14:30, 14:37 -> 14:35)
     const fiveMinuteSlot = Math.floor(timestamp / (5 * 60 * 1000)) * (5 * 60 * 1000);
     
-    setTimelineData(prev => {
+    setTimelineData5min(prev => {
       const existingSlotIndex = prev.findIndex(item => item.timestamp === fiveMinuteSlot);
       
       if (existingSlotIndex >= 0) {
@@ -219,14 +242,95 @@ function LiquidationChart() {
           .sort((a, b) => a.timestamp - b.timestamp);
       }
     });
+  };
+
+  /**
+   * 1시간 간격 타임라인 데이터 업데이트
+   */
+  const updateTimelineData1hour = (newDataPoint) => {
+    const timestamp = newDataPoint.timestamp || Date.now();
+    // 1시간 간격으로 반올림 (예: 14:32 -> 14:00, 15:47 -> 15:00)
+    const oneHourSlot = Math.floor(timestamp / (60 * 60 * 1000)) * (60 * 60 * 1000);
     
-    // 차트 업데이트
-    processTimelineChart();
+    setTimelineData1hour(prev => {
+      const existingSlotIndex = prev.findIndex(item => item.timestamp === oneHourSlot);
+      
+      if (existingSlotIndex >= 0) {
+        // 기존 슬롯 업데이트
+        const updated = [...prev];
+        const slot = { ...updated[existingSlotIndex] };
+        
+        Object.entries(newDataPoint.exchanges).forEach(([exchange, data]) => {
+          if (!slot.exchanges[exchange]) {
+            slot.exchanges[exchange] = { long: 0, short: 0, count: 0 };
+          }
+          slot.exchanges[exchange].long += data.long_volume || 0;
+          slot.exchanges[exchange].short += data.short_volume || 0;
+          slot.exchanges[exchange].count += (data.long_count || 0) + (data.short_count || 0);
+        });
+        
+        updated[existingSlotIndex] = slot;
+        return updated;
+      } else {
+        // 새로운 슬롯 생성
+        const newSlot = {
+          timestamp: oneHourSlot,
+          exchanges: {}
+        };
+        
+        Object.entries(newDataPoint.exchanges).forEach(([exchange, data]) => {
+          newSlot.exchanges[exchange] = {
+            long: data.long_volume || 0,
+            short: data.short_volume || 0,
+            count: (data.long_count || 0) + (data.short_count || 0)
+          };
+        });
+        
+        const updated = [...prev, newSlot];
+        // 시간순 정렬 및 최근 24시간만 유지
+        const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
+        return updated
+          .filter(item => item.timestamp >= twentyFourHoursAgo)
+          .sort((a, b) => a.timestamp - b.timestamp);
+      }
+    });
   };
   
   /**
    * 데모 청산 데이터를 생성합니다.
    */
+  /**
+   * 초기 청산 데이터를 REST API로 빠르게 로드합니다.
+   */
+  const loadInitialData = async () => {
+    try {
+      console.log('🚀 청산 차트 초기 데이터 로딩 중...');
+      setLoading(true);
+      
+      const response = await fetch('http://localhost:8000/api/liquidations/aggregated?limit=60');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log(`✅ 청산 초기 데이터 로드 완료: ${data.length}개 시간 포인트`);
+      
+      // 5분 및 1시간 데이터로 변환
+      data.forEach(item => {
+        updateTimelineData5min(item);
+        updateTimelineData1hour(item);
+      });
+      
+      setLoading(false);
+      setError(null);
+      
+    } catch (err) {
+      console.error('❌ 청산 초기 데이터 로드 실패:', err);
+      setError('초기 데이터 로드 실패. WebSocket 연결을 대기 중...');
+      setLoading(false);
+    }
+  };
+
   const generateDemoData = () => {
     const demoData = [];
     const now = Date.now();
@@ -257,23 +361,46 @@ function LiquidationChart() {
   };
 
   /**
-   * 타임라인 차트 처리 (5분 간격 누적 차트)
+   * 타임라인 차트 처리 (선택된 시간 프레임에 따라)
    */
   const processTimelineChart = () => {
+    const timelineData = selectedTimeFrame === '5min' ? timelineData5min : timelineData1hour;
+    
     if (timelineData.length === 0) return;
 
-    // 시간 라벨 생성 (HH:MM 형식)
+    // 시간 라벨 생성 (시간 프레임에 따라 형식 조정)
     const labels = timelineData.map(item => {
       const date = new Date(item.timestamp);
-      return date.toLocaleTimeString('ko-KR', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: false 
-      });
+      if (selectedTimeFrame === '5min') {
+        return date.toLocaleTimeString('ko-KR', { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          hour12: false 
+        });
+      } else {
+        return date.toLocaleTimeString('ko-KR', { 
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          hour12: false 
+        });
+      }
     });
 
     const exchanges = ['binance', 'bybit', 'okx', 'bitmex', 'bitget', 'hyperliquid'];
     const datasets = [];
+    
+    // 디버깅: 타임라인 데이터 확인
+    if (process.env.NODE_ENV === 'development' && timelineData.length > 0) {
+      const sample = timelineData[timelineData.length - 1];
+      console.log('🔄 차트 데이터 처리:', selectedTimeFrame);
+      console.log('📊 최신 타임라인 데이터:', sample);
+      if (sample?.exchanges?.binance) {
+        console.log('💰 바이낸스 데이터:', sample.exchanges.binance);
+      } else {
+        console.log('❌ 바이낸스 데이터 없음');
+      }
+    }
 
     // 거래소별 Long 데이터셋
     exchanges.forEach(exchange => {
@@ -285,7 +412,8 @@ function LiquidationChart() {
           label: `${exchange.toUpperCase()} Long`,
           data: timelineData.map(item => {
             const exchangeData = item.exchanges[exchange];
-            return exchangeData ? exchangeData.long / 1000 : 0; // K 단위
+            const divider = selectedTimeFrame === '5min' ? 1000 : 1000000; // 5분: K단위, 1시간: M단위
+            return exchangeData ? exchangeData.long / divider : 0;
           }),
           backgroundColor: exchangeColors[exchange].long,
           borderColor: exchangeColors[exchange].long,
@@ -297,7 +425,8 @@ function LiquidationChart() {
           label: `${exchange.toUpperCase()} Short`,
           data: timelineData.map(item => {
             const exchangeData = item.exchanges[exchange];
-            return exchangeData ? -(exchangeData.short / 1000) : 0; // K 단위, 음수
+            const divider = selectedTimeFrame === '5min' ? 1000 : 1000000; // 5분: K단위, 1시간: M단위
+            return exchangeData ? -(exchangeData.short / divider) : 0;
           }),
           backgroundColor: exchangeColors[exchange].short,
           borderColor: exchangeColors[exchange].short,
@@ -339,7 +468,9 @@ function LiquidationChart() {
       },
       title: {
         display: true,
-        text: '5분 간격 누적 청산량 (최근 2시간)',
+        text: selectedTimeFrame === '5min' 
+          ? '5분 간격 누적 청산량 (최근 2시간)' 
+          : '1시간 간격 누적 청산량 (최근 24시간)',
         font: {
           size: 16,
           weight: 'bold'
@@ -353,7 +484,8 @@ function LiquidationChart() {
           label: (context) => {
             const value = Math.abs(context.parsed.y);
             const label = context.dataset.label;
-            return `${label}: ${value.toLocaleString()}K USDT`;
+            const unit = selectedTimeFrame === '5min' ? 'K' : 'M';
+            return `${label}: ${value.toLocaleString()}${unit} USDT`;
           }
         }
       }
@@ -370,21 +502,25 @@ function LiquidationChart() {
         stacked: true,
         title: {
           display: true,
-          text: '청산량 (K USDT)'
+          text: selectedTimeFrame === '5min' ? '청산량 (K USDT)' : '청산량 (M USDT)'
         },
         ticks: {
           callback: function(value) {
-            return Math.abs(value).toLocaleString() + 'K';
+            const unit = selectedTimeFrame === '5min' ? 'K' : 'M';
+            return Math.abs(value).toLocaleString() + unit;
           }
         }
       }
     }
   };
 
-  if (loading && !chartData) {
+  if (loading) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center' }}>
-        <p>청산 데이터 로딩 중...</p>
+      <div style={{ padding: '20px', textAlign: 'center', color: 'white' }}>
+        <p>🔄 청산 데이터 로딩 중...</p>
+        <p style={{ fontSize: '12px', color: '#888', marginTop: '10px' }}>
+          REST API 및 WebSocket 연결 시도 중
+        </p>
       </div>
     );
   }
@@ -439,8 +575,39 @@ function LiquidationChart() {
         {chartData && <Bar data={chartData} options={options} />}
       </div>
       
-      {/* 거래소 선택 체크박스 */}
+      {/* 시간 간격 선택 */}
       <div style={{ marginTop: '15px' }}>
+        <div style={{ color: 'white', fontSize: '14px', marginBottom: '8px', fontWeight: 'bold' }}>
+          시간 간격:
+        </div>
+        <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
+          <label style={{ color: 'white', fontSize: '13px', display: 'flex', alignItems: 'center' }}>
+            <input
+              type="radio"
+              name="timeFrame"
+              value="5min"
+              checked={selectedTimeFrame === '5min'}
+              onChange={(e) => setSelectedTimeFrame(e.target.value)}
+              style={{ marginRight: '5px' }}
+            />
+            5분 간격 (최근 2시간)
+          </label>
+          <label style={{ color: 'white', fontSize: '13px', display: 'flex', alignItems: 'center' }}>
+            <input
+              type="radio"
+              name="timeFrame"
+              value="1hour"
+              checked={selectedTimeFrame === '1hour'}
+              onChange={(e) => setSelectedTimeFrame(e.target.value)}
+              style={{ marginRight: '5px' }}
+            />
+            1시간 간격 (최근 24시간)
+          </label>
+        </div>
+      </div>
+
+      {/* 거래소 선택 체크박스 */}
+      <div>
         <div style={{ color: 'white', fontSize: '14px', marginBottom: '8px', fontWeight: 'bold' }}>
           거래소 선택:
         </div>

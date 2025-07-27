@@ -8,4 +8,5 @@ websockets
 beautifulsoup4
 lxml
 aiohttp
-
+numpy
+psutil

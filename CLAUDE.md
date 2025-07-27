@@ -351,3 +351,162 @@ Applied 4-step debugging methodology for volume display issues:
 - **Frontend State Flow**: WebSocket → App.js → CoinTable.js state propagation
 - **Debugging Methodology**: Systematic 4-layer approach prevents missed issues
 - **CSS Grid Migration**: HTML tables to Tailwind CSS grid for responsive design
+
+## Recent Development Session (바이낸스 청산 데이터 수집 문제 해결)
+
+### Problem Identification
+- **초기 문제**: 바이낸스 거래소가 실시간 청산 데이터에서 누락됨
+- **WebSocket 연결**: 바이낸스 청산 WebSocket은 정상 연결되어 데이터 수신 중
+- **필터링 문제**: BTCUSDT만 처리하도록 설정했으나 실제로는 다른 코인 청산이 더 빈번
+- **Websockets 호환성**: websockets 15.0.1 → 11.0.3 다운그레이드로 인한 API 변경
+
+### Systematic Debugging Process
+1. **백엔드 로그 분석**: 바이낸스 WebSocket 메시지 수신 확인
+2. **청산 데이터 메모리 검사**: `/api/liquidations/debug` 엔드포인트로 저장 상태 확인
+3. **필터링 로직 검토**: BTCUSDT 외 코인(PENGUUSDC, ZORAUSDT 등)이 실제 청산 대상
+4. **Import 문제 해결**: websockets.connect() 사용법 수정
+
+### Critical Fixes Applied
+
+#### 바이낸스 청산 필터링 제거 (`liquidation_services.py`):
+```python
+# Before (BTCUSDT 필터링):
+if symbol != 'BTCUSDT':
+    logger.debug(f"바이낸스 비트코인 외 코인 스킵: {symbol}")
+    return
+
+# After (모든 코인 처리):
+logger.debug(f"바이낸스 청산 처리: {symbol}")
+```
+
+#### Websockets 11.0.3 호환성 수정:
+```python
+# Before: import websockets
+# After: from websockets import connect as websockets_connect  # type: ignore
+
+# WebSocket 연결 사용법:
+async with websockets_connect(uri, ping_timeout=20, ping_interval=20) as websocket:
+```
+
+#### 수정된 파일들:
+- `services.py`: WebSocket import 및 연결 방식 수정
+- `liquidation_services.py`: 바이낸스 필터링 제거, WebSocket import 수정
+- `enhanced_websocket.py`: WebSocket import 수정
+
+### Results Achieved
+- **바이낸스 청산 데이터 수집 성공**: 실시간으로 CKBUSDT, ZORAUSDT, REIUSDT, SPKUSDT 등 다양한 코인 청산 수집
+- **6개 거래소 완전 지원**: Binance, OKX, Bitget, BitMEX, Hyperliquid, Bybit 모두 프론트엔드 표시
+- **Pylance 오류 해결**: `# type: ignore` 주석으로 타입 검사 문제 해결
+- **시뮬레이션 최적화**: 실제 데이터 충분으로 시뮬레이션 비활성화하여 리소스 절약
+
+### Technical Architecture Updates
+- **청산 데이터 플로우**: 바이낸스 WebSocket → 실시간 수신 → 메모리 저장 → API 응답 → 프론트엔드
+- **필터링 정책 변경**: BTCUSDT 제한 → 모든 코인 청산 데이터 수집
+- **Websockets 버전**: 15.0.1 → 11.0.3 (FastAPI 호환성)
+- **Import 방식**: 직접 import로 타입 검사 문제 우회
+
+## Recent Development Session (실시간 가격/프리미엄 변화 애니메이션 구현)
+
+### Problem Identification
+- **최초 문제**: 코인 가격과 김치 프리미엄 변화 시 시각적 피드백(플래시 애니메이션) 부재
+- **기술적 도전**: React 최적화와 실시간 데이터 업데이트 간의 충돌
+- **사용자 요구사항**: 가격 상승 시 초록색, 하락 시 빨간색 플래시 효과
+
+### Critical Architecture Decision: Direct DOM Manipulation
+React의 메모이제이션과 최적화가 실시간 애니메이션을 방해하여 **직접 DOM 조작 방식** 채택:
+
+#### PriceCell 구현 (`PriceCell.js`):
+```javascript
+// React 상태 대신 직접 DOM 조작
+const PriceCell = ({ price, currency, formatPrice }) => {
+  const spanRef = useRef(null);
+  const prevPriceRef = useRef(null);
+  
+  useEffect(() => {
+    const currentPrice = price;
+    const prevPrice = prevPriceRef.current;
+    
+    if (prevPrice !== currentPrice) {
+      const change = currentPrice > prevPrice ? 'up' : 'down';
+      
+      // 즉시 DOM 업데이트
+      spanRef.current.textContent = formatPrice(currentPrice, currency);
+      
+      // 플래시 애니메이션 적용
+      const flashClass = change === 'up' 
+        ? 'bg-green-400/60 border-2 border-green-300 shadow-xl scale-105'
+        : 'bg-red-400/60 border-2 border-red-300 shadow-xl scale-105';
+      
+      // 1.5초 플래시 후 원래 상태로 복구
+      spanRef.current.className = baseClass + ' ' + flashClass;
+      setTimeout(() => spanRef.current.className = baseClass, 1500);
+    }
+  }, [price]);
+  
+  return <span ref={spanRef}>{formatPrice(price, currency)}</span>;
+};
+```
+
+#### PremiumCell 구현 (`PremiumCell.js`):
+```javascript
+// 김치 프리미엄 변화 애니메이션 (동일한 패턴)
+const PremiumCell = ({ premium }) => {
+  const spanRef = useRef(null);
+  const prevPremiumRef = useRef(null);
+  
+  useEffect(() => {
+    if (prevPremium !== currentPremium) {
+      const change = currentPremium > prevPremium ? 'up' : 'down';
+      
+      // 에메랄드/빨강 색상으로 김치 프리미엄 변화 표시
+      const flashClass = change === 'up'
+        ? 'bg-emerald-400/60 border-2 border-emerald-300 shadow-xl'
+        : 'bg-red-400/60 border-2 border-red-300 shadow-xl';
+      
+      spanRef.current.className = baseClass + ' ' + flashClass;
+      setTimeout(() => spanRef.current.className = baseClass, 1500);
+    }
+  }, [premium]);
+};
+```
+
+### Debugging Process: 실시간 데이터 흐름 추적
+
+#### 1. 백엔드 데이터 수집 검증
+- **WebSocket 연결 상태**: ✅ 정상 (557개 코인 실시간 브로드캐스팅)
+- **거래소 데이터**: ✅ Upbit, Binance, Bybit 모두 정상 수집
+- **BTC 실시간 데이터**: 161,272,000원 → 161,273,000원 변화 확인됨
+
+#### 2. 프론트엔드 데이터 흐름 진단
+4단계 디버깅 방법론 적용:
+```
+Backend WebSocket → usePriceData → CoinTable → CoinRow → PriceCell/PremiumCell
+```
+
+**발견된 문제**: CoinTable에서는 새 데이터 처리하지만 CoinRow로 전달되지 않음
+```javascript
+// CoinTable: 새 데이터 수신 ✅
+💰 [usePriceData] BTC 수신: 161273000 KRW
+🔍 [CoinTable] BTC 최종 객체 생성: domestic_price=161273000
+
+// CoinRow: 이전 데이터만 수신 ❌
+🎯 [CoinRow] BTC: 161272000  // 여전히 이전 값!
+🔍 [PriceCell] 렌더링: price=161272000, prev=161272000  // 변화 없음
+```
+
+#### 3. React 최적화 문제 해결
+- **React.memo 제거**: CoinRow에서 메모이제이션 완전 비활성화
+- **강제 리렌더링**: _renderKey로 고유 키 생성
+- **디버그 로깅**: 각 단계별 상세 추적 로그 추가
+
+### Current Status
+- ✅ **백엔드**: 실시간 데이터 수집 및 브로드캐스팅 정상
+- ✅ **PriceCell/PremiumCell**: 직접 DOM 조작 애니메이션 로직 완성
+- ❌ **데이터 전달**: CoinTable → CoinRow 간 props 업데이트 누락
+- 🔍 **진행 중**: React 컴포넌트 리렌더링 문제 해결
+
+### Technical Lessons Learned
+- **Direct DOM Manipulation**: React 최적화를 우회한 실시간 애니메이션 해결책
+- **WebSocket 디버깅**: 4단계 데이터 흐름 추적 방법론
+- **성능 vs 실시간성**: 메모이제이션과 실시간 업데이트 간의 트레이드오프
+- **컴포넌트 분리**: PriceCell과 PremiumCell의 독립적 애니메이션 로직

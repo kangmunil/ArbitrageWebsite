@@ -1,16 +1,21 @@
 /**
- * 프론트엔드 성능 모니터링 유틸리티
+ * React 애플리케이션 성능 모니터링 도구
  * 
  * 주요 기능:
- * 1. 렌더링 성능 측정
- * 2. API 호출 성능 추적
- * 3. 메모리 사용량 모니터링
- * 4. 사용자 상호작용 추적
- * 5. 성능 지표 대시보드
+ * - 컴포넌트 렌더링 성능 측정
+ * - API 호출 시간 추적
+ * - 사용자 상호작용 기록
+ * - 메모리 사용량 모니터링
+ * - Core Web Vitals 측정
+ * - 성능 리포트 생성 및 내보내기
  */
 
 class PerformanceMonitor {
   constructor() {
+    this.isEnabled = process.env.NODE_ENV === 'development';
+    this.maxMetrics = 1000; // 메트릭 최대 개수
+    
+    // 메트릭 저장소
     this.metrics = {
       renders: [],
       apiCalls: [],
@@ -19,59 +24,51 @@ class PerformanceMonitor {
       errors: []
     };
     
+    // 옵저버 패턴용 콜백들
     this.observers = {
       render: [],
-      api: [],
+      apiCall: [],
+      interaction: [],
       memory: [],
       error: []
     };
     
-    this.isEnabled = process.env.NODE_ENV === 'development';
-    this.maxMetrics = 1000; // 최대 메트릭 수
-    
-    if (this.isEnabled) {
-      this.startMonitoring();
-      this.setupGlobalErrorHandling();
-    }
+    // 자동 메모리 모니터링 시작
+    this.startMemoryMonitoring();
   }
   
   /**
-   * 렌더링 성능 측정
+   * 컴포넌트 렌더링 성능 측정
    */
   measureRender(componentName, renderFunction) {
-    if (!this.isEnabled) {
-      return renderFunction();
-    }
+    if (!this.isEnabled) return renderFunction();
     
     const startTime = performance.now();
-    const startMemory = this.getMemoryUsage();
     
     try {
       const result = renderFunction();
-      
       const endTime = performance.now();
-      const endMemory = this.getMemoryUsage();
       const duration = endTime - startTime;
       
       const metric = {
-        timestamp: Date.now(),
+        type: 'render',
         component: componentName,
-        duration,
-        memoryDelta: endMemory ? endMemory.used - startMemory.used : 0,
-        type: 'render'
+        duration: duration,
+        timestamp: Date.now(),
+        isSlowRender: duration > 16 // 60fps 기준
       };
       
       this.addMetric('renders', metric);
       this.notifyObservers('render', metric);
       
-      // 느린 렌더링 경고
-      if (duration > 16) { // 60fps 기준
-        console.warn(`Slow render detected: ${componentName} took ${duration.toFixed(2)}ms`);
+      if (duration > 50) { // 50ms 이상이면 경고
+        console.warn(`🐌 Slow render detected: ${componentName} (${duration.toFixed(2)}ms)`);
       }
       
       return result;
     } catch (error) {
-      this.recordError('render', componentName, error);
+      const endTime = performance.now();
+      this.trackError('render', componentName, error);
       throw error;
     }
   }
@@ -80,35 +77,29 @@ class PerformanceMonitor {
    * API 호출 성능 추적
    */
   async measureApiCall(url, apiFunction) {
-    if (!this.isEnabled) {
-      return apiFunction();
-    }
+    if (!this.isEnabled) return apiFunction();
     
     const startTime = performance.now();
-    const startMemory = this.getMemoryUsage();
     
     try {
       const result = await apiFunction();
-      
       const endTime = performance.now();
-      const endMemory = this.getMemoryUsage();
       const duration = endTime - startTime;
       
       const metric = {
-        timestamp: Date.now(),
-        url,
-        duration,
-        memoryDelta: endMemory ? endMemory.used - startMemory.used : 0,
+        type: 'apiCall',
+        url: url,
+        duration: duration,
         success: true,
-        type: 'api'
+        timestamp: Date.now(),
+        isSlow: duration > 1000 // 1초 이상이면 느린 호출
       };
       
       this.addMetric('apiCalls', metric);
-      this.notifyObservers('api', metric);
+      this.notifyObservers('apiCall', metric);
       
-      // 느린 API 호출 경고
-      if (duration > 1000) {
-        console.warn(`Slow API call: ${url} took ${duration.toFixed(2)}ms`);
+      if (duration > 3000) { // 3초 이상이면 경고
+        console.warn(`🐌 Slow API call: ${url} (${duration.toFixed(2)}ms)`);
       }
       
       return result;
@@ -117,16 +108,17 @@ class PerformanceMonitor {
       const duration = endTime - startTime;
       
       const metric = {
-        timestamp: Date.now(),
-        url,
-        duration,
+        type: 'apiCall',
+        url: url,
+        duration: duration,
         success: false,
         error: error.message,
-        type: 'api'
+        timestamp: Date.now()
       };
       
       this.addMetric('apiCalls', metric);
-      this.recordError('api', url, error);
+      this.trackError('api', url, error);
+      
       throw error;
     }
   }
@@ -134,81 +126,54 @@ class PerformanceMonitor {
   /**
    * 사용자 상호작용 추적
    */
-  trackInteraction(type, target, details = {}) {
+  trackInteraction(type, component, details = {}) {
     if (!this.isEnabled) return;
     
     const metric = {
-      timestamp: Date.now(),
-      type,
-      target,
-      details,
-      userAgent: navigator.userAgent,
-      viewport: {
-        width: window.innerWidth,
-        height: window.innerHeight
-      }
+      type: type,
+      component: component,
+      details: details,
+      timestamp: Date.now()
     };
     
     this.addMetric('interactions', metric);
+    this.notifyObservers('interaction', metric);
   }
   
   /**
-   * 메모리 사용량 모니터링 시작
+   * 메모리 사용량 모니터링
    */
-  startMonitoring() {
-    // 5초마다 메모리 사용량 기록
+  startMemoryMonitoring() {
+    if (!this.isEnabled) return;
+    
     setInterval(() => {
-      const memoryUsage = this.getMemoryUsage();
-      if (memoryUsage) {
-        const metric = {
-          timestamp: Date.now(),
-          ...memoryUsage,
-          type: 'memory'
-        };
+      const memoryInfo = this.getMemoryUsage();
+      if (memoryInfo) {
+        this.addMetric('memory', {
+          ...memoryInfo,
+          timestamp: Date.now()
+        });
         
-        this.addMetric('memory', metric);
-        this.notifyObservers('memory', metric);
-        
-        // 메모리 사용량 경고
-        if (memoryUsage.used > memoryUsage.limit * 0.8) {
-          console.warn(`High memory usage: ${memoryUsage.used}MB / ${memoryUsage.limit}MB`);
+        // 메모리 사용량이 높으면 경고
+        if (memoryInfo.used > 100) { // 100MB 이상
+          console.warn(`🔥 High memory usage: ${memoryInfo.used}MB`);
         }
       }
-    }, 5000);
+    }, 5000); // 5초마다 체크
   }
   
   /**
-   * 전역 에러 핸들링 설정
+   * 에러 추적
    */
-  setupGlobalErrorHandling() {
-    window.addEventListener('error', (event) => {
-      this.recordError('javascript', event.filename, {
-        message: event.message,
-        lineno: event.lineno,
-        colno: event.colno,
-        stack: event.error?.stack
-      });
-    });
+  trackError(category, context, error) {
+    if (!this.isEnabled) return;
     
-    window.addEventListener('unhandledrejection', (event) => {
-      this.recordError('promise', 'unhandled', {
-        reason: event.reason
-      });
-    });
-  }
-  
-  /**
-   * 에러 기록
-   */
-  recordError(category, source, error) {
     const metric = {
-      timestamp: Date.now(),
-      category,
-      source,
-      message: error.message || String(error),
+      category: category,
+      context: context,
+      message: error.message,
       stack: error.stack,
-      userAgent: navigator.userAgent,
-      url: window.location.href
+      timestamp: Date.now()
     };
     
     this.addMetric('errors', metric);
@@ -218,4 +183,190 @@ class PerformanceMonitor {
   /**
    * 메트릭 추가
    */
-  addMetric(type, metric) {\n    this.metrics[type].push(metric);\n    \n    // 메트릭 수 제한\n    if (this.metrics[type].length > this.maxMetrics) {\n      this.metrics[type] = this.metrics[type].slice(-this.maxMetrics);\n    }\n  }\n  \n  /**\n   * 옵저버 패턴으로 실시간 알림\n   */\n  subscribe(type, callback) {\n    if (this.observers[type]) {\n      this.observers[type].push(callback);\n    }\n  }\n  \n  unsubscribe(type, callback) {\n    if (this.observers[type]) {\n      const index = this.observers[type].indexOf(callback);\n      if (index > -1) {\n        this.observers[type].splice(index, 1);\n      }\n    }\n  }\n  \n  notifyObservers(type, data) {\n    if (this.observers[type]) {\n      this.observers[type].forEach(callback => {\n        try {\n          callback(data);\n        } catch (error) {\n          console.error('Observer callback error:', error);\n        }\n      });\n    }\n  }\n  \n  /**\n   * 현재 메모리 사용량 조회\n   */\n  getMemoryUsage() {\n    if (performance && performance.memory) {\n      return {\n        used: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),\n        total: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024),\n        limit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024)\n      };\n    }\n    return null;\n  }\n  \n  /**\n   * Core Web Vitals 측정\n   */\n  measureWebVitals() {\n    if (!this.isEnabled) return;\n    \n    // Largest Contentful Paint\n    new PerformanceObserver((list) => {\n      const entries = list.getEntries();\n      const lastEntry = entries[entries.length - 1];\n      \n      console.log('LCP:', lastEntry.startTime);\n      this.trackInteraction('web_vital', 'lcp', {\n        value: lastEntry.startTime,\n        element: lastEntry.element?.tagName\n      });\n    }).observe({ entryTypes: ['largest-contentful-paint'] });\n    \n    // First Input Delay\n    new PerformanceObserver((list) => {\n      const entries = list.getEntries();\n      entries.forEach((entry) => {\n        console.log('FID:', entry.processingStart - entry.startTime);\n        this.trackInteraction('web_vital', 'fid', {\n          value: entry.processingStart - entry.startTime,\n          name: entry.name\n        });\n      });\n    }).observe({ entryTypes: ['first-input'] });\n    \n    // Cumulative Layout Shift\n    let clsValue = 0;\n    new PerformanceObserver((list) => {\n      const entries = list.getEntries();\n      entries.forEach((entry) => {\n        if (!entry.hadRecentInput) {\n          clsValue += entry.value;\n        }\n      });\n      \n      console.log('CLS:', clsValue);\n      this.trackInteraction('web_vital', 'cls', {\n        value: clsValue\n      });\n    }).observe({ entryTypes: ['layout-shift'] });\n  }\n  \n  /**\n   * 성능 리포트 생성\n   */\n  generateReport(timeRange = 60000) { // 기본 1분\n    const now = Date.now();\n    const cutoff = now - timeRange;\n    \n    const filterByTime = (metrics) => \n      metrics.filter(m => m.timestamp >= cutoff);\n    \n    const recentRenders = filterByTime(this.metrics.renders);\n    const recentApiCalls = filterByTime(this.metrics.apiCalls);\n    const recentInteractions = filterByTime(this.metrics.interactions);\n    const recentMemory = filterByTime(this.metrics.memory);\n    const recentErrors = filterByTime(this.metrics.errors);\n    \n    const report = {\n      timeRange: `${timeRange / 1000}s`,\n      timestamp: new Date().toISOString(),\n      \n      renders: {\n        count: recentRenders.length,\n        avgDuration: this.average(recentRenders.map(r => r.duration)),\n        slowRenders: recentRenders.filter(r => r.duration > 16).length,\n        components: [...new Set(recentRenders.map(r => r.component))]\n      },\n      \n      apiCalls: {\n        count: recentApiCalls.length,\n        avgDuration: this.average(recentApiCalls.map(a => a.duration)),\n        successRate: (recentApiCalls.filter(a => a.success).length / recentApiCalls.length * 100) || 0,\n        slowCalls: recentApiCalls.filter(a => a.duration > 1000).length\n      },\n      \n      interactions: {\n        count: recentInteractions.length,\n        types: this.countBy(recentInteractions, 'type')\n      },\n      \n      memory: {\n        current: this.getMemoryUsage(),\n        peak: recentMemory.length > 0 ? Math.max(...recentMemory.map(m => m.used)) : 0,\n        average: this.average(recentMemory.map(m => m.used))\n      },\n      \n      errors: {\n        count: recentErrors.length,\n        categories: this.countBy(recentErrors, 'category')\n      }\n    };\n    \n    return report;\n  }\n  \n  /**\n   * 콘솔 대시보드 출력\n   */\n  showDashboard() {\n    if (!this.isEnabled) {\n      console.log('Performance monitoring is disabled in production');\n      return;\n    }\n    \n    const report = this.generateReport();\n    \n    console.group('🚀 Performance Dashboard');\n    console.log('📊 Renders:', report.renders);\n    console.log('🌐 API Calls:', report.apiCalls);\n    console.log('👆 Interactions:', report.interactions);\n    console.log('💾 Memory:', report.memory);\n    console.log('❌ Errors:', report.errors);\n    console.groupEnd();\n    \n    return report;\n  }\n  \n  /**\n   * 유틸리티 함수들\n   */\n  average(arr) {\n    return arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;\n  }\n  \n  countBy(arr, key) {\n    return arr.reduce((acc, item) => {\n      const value = item[key];\n      acc[value] = (acc[value] || 0) + 1;\n      return acc;\n    }, {});\n  }\n  \n  /**\n   * 성능 데이터 내보내기\n   */\n  exportData() {\n    const data = {\n      timestamp: Date.now(),\n      metrics: this.metrics,\n      report: this.generateReport(300000), // 5분 리포트\n      browser: {\n        userAgent: navigator.userAgent,\n        language: navigator.language,\n        platform: navigator.platform,\n        cookieEnabled: navigator.cookieEnabled,\n        onLine: navigator.onLine\n      },\n      page: {\n        url: window.location.href,\n        title: document.title,\n        referrer: document.referrer\n      }\n    };\n    \n    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });\n    const url = URL.createObjectURL(blob);\n    \n    const a = document.createElement('a');\n    a.href = url;\n    a.download = `performance_data_${new Date().toISOString().slice(0, 19)}.json`;\n    a.click();\n    \n    URL.revokeObjectURL(url);\n  }\n  \n  /**\n   * 모니터링 초기화\n   */\n  reset() {\n    this.metrics = {\n      renders: [],\n      apiCalls: [],\n      interactions: [],\n      memory: [],\n      errors: []\n    };\n    \n    console.log('Performance metrics reset');\n  }\n}\n\n// 전역 성능 모니터 인스턴스\nconst performanceMonitor = new PerformanceMonitor();\n\n// 개발자 도구에서 접근 가능하게 설정\nif (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {\n  window.performanceMonitor = performanceMonitor;\n  \n  // Web Vitals 측정 시작\n  performanceMonitor.measureWebVitals();\n  \n  console.log('🚀 Performance Monitor initialized. Use window.performanceMonitor to access.');\n  console.log('Available methods: showDashboard(), exportData(), reset()');\n}\n\nexport default performanceMonitor;\n\n/**\n * React Hook for performance monitoring\n */\nexport const usePerformanceMonitor = (componentName) => {\n  const measureRender = (renderFunction) => {\n    return performanceMonitor.measureRender(componentName, renderFunction);\n  };\n  \n  const trackInteraction = (type, details) => {\n    performanceMonitor.trackInteraction(type, componentName, details);\n  };\n  \n  return { measureRender, trackInteraction };\n};
+  addMetric(type, metric) {
+    this.metrics[type].push(metric);
+    
+    // 메트릭 수 제한
+    if (this.metrics[type].length > this.maxMetrics) {
+      this.metrics[type] = this.metrics[type].slice(-this.maxMetrics);
+    }
+  }
+  
+  /**
+   * 옵저버 패턴으로 실시간 알림
+   */
+  subscribe(type, callback) {
+    if (this.observers[type]) {
+      this.observers[type].push(callback);
+    }
+  }
+  
+  unsubscribe(type, callback) {
+    if (this.observers[type]) {
+      const index = this.observers[type].indexOf(callback);
+      if (index > -1) {
+        this.observers[type].splice(index, 1);
+      }
+    }
+  }
+  
+  notifyObservers(type, data) {
+    if (this.observers[type]) {
+      this.observers[type].forEach(callback => {
+        try {
+          callback(data);
+        } catch (error) {
+          console.error('Observer callback error:', error);
+        }
+      });
+    }
+  }
+  
+  /**
+   * 현재 메모리 사용량 조회
+   */
+  getMemoryUsage() {
+    if (performance && performance.memory) {
+      return {
+        used: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),
+        total: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024),
+        limit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024)
+      };
+    }
+    return null;
+  }
+  
+  /**
+   * 성능 리포트 생성
+   */
+  generateReport(timeRange = 60000) { // 기본 1분
+    const now = Date.now();
+    const cutoff = now - timeRange;
+    
+    const filterByTime = (metrics) => 
+      metrics.filter(m => m.timestamp >= cutoff);
+    
+    const recentRenders = filterByTime(this.metrics.renders);
+    const recentApiCalls = filterByTime(this.metrics.apiCalls);
+    const recentInteractions = filterByTime(this.metrics.interactions);
+    const recentMemory = filterByTime(this.metrics.memory);
+    const recentErrors = filterByTime(this.metrics.errors);
+    
+    const report = {
+      timeRange: `${timeRange / 1000}s`,
+      timestamp: new Date().toISOString(),
+      
+      renders: {
+        count: recentRenders.length,
+        avgDuration: this.average(recentRenders.map(r => r.duration)),
+        slowRenders: recentRenders.filter(r => r.duration > 16).length,
+        components: [...new Set(recentRenders.map(r => r.component))]
+      },
+      
+      apiCalls: {
+        count: recentApiCalls.length,
+        avgDuration: this.average(recentApiCalls.map(a => a.duration)),
+        successRate: (recentApiCalls.filter(a => a.success).length / recentApiCalls.length * 100) || 0,
+        slowCalls: recentApiCalls.filter(a => a.duration > 1000).length
+      },
+      
+      interactions: {
+        count: recentInteractions.length,
+        types: this.countBy(recentInteractions, 'type')
+      },
+      
+      memory: {
+        current: this.getMemoryUsage(),
+        peak: recentMemory.length > 0 ? Math.max(...recentMemory.map(m => m.used)) : 0,
+        average: this.average(recentMemory.map(m => m.used))
+      },
+      
+      errors: {
+        count: recentErrors.length,
+        categories: this.countBy(recentErrors, 'category')
+      }
+    };
+    
+    return report;
+  }
+  
+  /**
+   * 콘솔 대시보드 출력
+   */
+  showDashboard() {
+    if (!this.isEnabled) {
+      console.log('Performance monitoring is disabled in production');
+      return;
+    }
+    
+    const report = this.generateReport();
+    
+    console.group('🚀 Performance Dashboard');
+    console.log('📊 Renders:', report.renders);
+    console.log('🌐 API Calls:', report.apiCalls);
+    console.log('👆 Interactions:', report.interactions);
+    console.log('💾 Memory:', report.memory);
+    console.log('❌ Errors:', report.errors);
+    console.groupEnd();
+    
+    return report;
+  }
+  
+  /**
+   * 유틸리티 함수들
+   */
+  average(arr) {
+    return arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+  }
+  
+  countBy(arr, key) {
+    return arr.reduce((acc, item) => {
+      const value = item[key];
+      acc[value] = (acc[value] || 0) + 1;
+      return acc;
+    }, {});
+  }
+  
+  /**
+   * 모니터링 초기화
+   */
+  reset() {
+    this.metrics = {
+      renders: [],
+      apiCalls: [],
+      interactions: [],
+      memory: [],
+      errors: []
+    };
+    
+    console.log('Performance metrics reset');
+  }
+}
+
+// 전역 성능 모니터 인스턴스
+const performanceMonitor = new PerformanceMonitor();
+
+// 개발자 도구에서 접근 가능하게 설정
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  window.performanceMonitor = performanceMonitor;
+  
+  console.log('🚀 Performance Monitor initialized. Use window.performanceMonitor to access.');
+  console.log('Available methods: showDashboard(), reset()');
+}
+
+export default performanceMonitor;
+
+/**
+ * React Hook for performance monitoring
+ */
+export const usePerformanceMonitor = (componentName) => {
+  const measureRender = (renderFunction) => {
+    return performanceMonitor.measureRender(componentName, renderFunction);
+  };
+  
+  const trackInteraction = (type, details) => {
+    performanceMonitor.trackInteraction(type, componentName, details);
+  };
+  
+  return { measureRender, trackInteraction };
+};

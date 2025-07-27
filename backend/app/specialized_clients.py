@@ -10,7 +10,7 @@ import logging
 import time
 import uuid
 import hashlib
-from typing import Dict, List, Optional, Set, Callable, Any
+from typing import Dict, List, Optional, Set, Callable, Any, Awaitable, Union
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import websockets
@@ -20,7 +20,7 @@ from .enhanced_websocket import EnhancedWebSocketClient
 from .api_manager import APIManager, RateLimitConfig, CircuitBreakerConfig
 from .exchange_specifications import (
     get_exchange_spec, normalize_ticker_data, is_retriable_error, 
-    is_rate_limited, get_symbol_format, EXCHANGE_SPECS
+    is_rate_limited, get_symbol_format, EXCHANGE_SPECS, ExchangeSpec
 )
 
 logger = logging.getLogger(__name__)
@@ -29,15 +29,15 @@ logger = logging.getLogger(__name__)
 class SubscriptionRequest:
     """구독 요청 정보"""
     symbols: Set[str]
-    channels: List[str] = None
-    params: Dict[str, Any] = None
+    channels: Optional[List[str]] = None
+    params: Optional[Dict[str, Any]] = None
 
 class ExchangeClient(ABC):
     """거래소 클라이언트 기본 클래스"""
     
     def __init__(self, exchange_name: str):
         self.exchange_name = exchange_name
-        self.spec = get_exchange_spec(exchange_name)
+        self.spec: Optional[ExchangeSpec] = get_exchange_spec(exchange_name)
         if not self.spec:
             raise ValueError(f"Unknown exchange: {exchange_name}")
         
@@ -53,9 +53,9 @@ class ExchangeClient(ABC):
         }
         
         # 콜백 함수들
-        self.on_ticker_data: Optional[Callable[[str, Dict], None]] = None
-        self.on_connection_change: Optional[Callable[[bool], None]] = None
-        self.on_error: Optional[Callable[[Exception], None]] = None
+        self.on_ticker_data: Optional[Callable[[str, Dict], Awaitable[None]]] = None
+        self.on_connection_change: Optional[Callable[[bool], Awaitable[None]]] = None
+        self.on_error: Optional[Callable[[Exception], Awaitable[None]]] = None
     
     @abstractmethod
     async def connect(self) -> bool:
@@ -93,15 +93,16 @@ class UpbitClient(ExchangeClient):
     def __init__(self):
         super().__init__("upbit")
         self.websocket_client = None
-        self.api_manager = APIManager("Upbit", self.spec.base_url)
+        self.api_manager = APIManager("Upbit", self.spec.base_url if self.spec else "")
         
         # 업비트 특화 설정
-        self.api_manager.configure_rate_limits(RateLimitConfig(
-            requests_per_second=self.spec.rest_rate_limits.requests_per_second,
-            requests_per_minute=self.spec.rest_rate_limits.requests_per_minute,
-            requests_per_hour=self.spec.rest_rate_limits.requests_per_hour,
-            burst_size=self.spec.rest_rate_limits.burst_capacity
-        ))
+        if self.spec and self.spec.rest_rate_limits:
+            self.api_manager.configure_rate_limits(RateLimitConfig(
+                requests_per_second=self.spec.rest_rate_limits.requests_per_second,
+                requests_per_minute=self.spec.rest_rate_limits.requests_per_minute,
+                requests_per_hour=self.spec.rest_rate_limits.requests_per_hour,
+                burst_size=self.spec.rest_rate_limits.burst_capacity
+            ))
         
         # 데이터 검증 함수 추가
         self.api_manager.add_validator(self._validate_upbit_data)
@@ -124,12 +125,16 @@ class UpbitClient(ExchangeClient):
         try:
             self.connection_stats["connection_attempts"] += 1
             
-            self.websocket_client = EnhancedWebSocketClient(
-                uri=self.spec.websocket_url,
-                name=f"Upbit-{id(self)}",
-                max_retries=self.spec.websocket_spec.reconnect_limit,
-                timeout=30.0
-            )
+            if self.spec and self.spec.websocket_spec:
+                self.websocket_client = EnhancedWebSocketClient(
+                    uri=self.spec.websocket_spec.url,
+                    name=f"Upbit-{id(self)}",
+                    max_retries=self.spec.websocket_spec.reconnect_limit,
+                    timeout=30.0
+                )
+            else:
+                logger.error(f"Upbit WebSocket 사양을 찾을 수 없습니다.")
+                return False
             
             # 콜백 설정
             self.websocket_client.on_connect = self._on_websocket_connect
@@ -143,7 +148,8 @@ class UpbitClient(ExchangeClient):
                 self.is_connected = True
                 self.connection_stats["successful_connections"] += 1
                 if self.on_connection_change:
-                    await self.on_connection_change(True)
+                    callback = self.on_connection_change
+                    await callback(True)
                     
             return success
             
@@ -158,18 +164,21 @@ class UpbitClient(ExchangeClient):
         logger.info("Upbit WebSocket 연결 성공")
         self.last_heartbeat = time.time()
     
-    async def _on_websocket_message(self, data: Dict):
+    async def _on_websocket_message(self, data: Union[Dict, List]):
         """WebSocket 메시지 수신 처리"""
         try:
             self.connection_stats["messages_received"] += 1
             self.connection_stats["last_message_time"] = time.time()
-            
-            if data.get("type") == "ticker":
-                # 티커 데이터 정규화
-                normalized = normalize_ticker_data(self.exchange_name, data)
-                if normalized and self.on_ticker_data:
-                    symbol = data["code"].replace("KRW-", "")
-                    await self.on_ticker_data(symbol, normalized)
+
+            if isinstance(data, dict): # Add this check
+                if data.get("type") == "ticker":
+                    # 티커 데이터 정규화
+                    normalized = normalize_ticker_data(self.exchange_name, data)
+                    if normalized and self.on_ticker_data:
+                        symbol = data["code"].replace("KRW-", "")
+                        await self.on_ticker_data(symbol, normalized)
+            else:
+                logger.warning(f"Upbit: Unexpected message format received: {type(data)}") # Log unexpected types
                     
         except Exception as e:
             logger.error(f"Upbit 메시지 처리 오류: {e}")
@@ -199,15 +208,13 @@ class UpbitClient(ExchangeClient):
             # 업비트 형식으로 심볼 변환
             upbit_codes = [f"KRW-{symbol}" for symbol in request.symbols]
             
-            subscribe_message = [
-                {"ticket": str(uuid.uuid4())},
-                {
-                    "type": "ticker",
-                    "codes": upbit_codes,
-                    "isOnlySnapshot": False,
-                    "isOnlyRealtime": True
-                }
-            ]
+            subscribe_message = {
+                "ticket": str(uuid.uuid4()),
+                "type": "ticker",
+                "codes": upbit_codes,
+                "isOnlySnapshot": False,
+                "isOnlyRealtime": True
+            }
             
             success = await self.websocket_client.send_message(subscribe_message)
             if success:
@@ -255,15 +262,16 @@ class BinanceClient(ExchangeClient):
     def __init__(self):
         super().__init__("binance")
         self.websocket_client = None
-        self.api_manager = APIManager("Binance", self.spec.base_url)
+        self.api_manager = APIManager("Binance", self.spec.base_url if self.spec else "")
         
         # 바이낸스 특화 설정 (가중치 기반 Rate Limiting)
-        self.api_manager.configure_rate_limits(RateLimitConfig(
-            requests_per_second=self.spec.rest_rate_limits.requests_per_second,
-            requests_per_minute=self.spec.rest_rate_limits.requests_per_minute,
-            requests_per_hour=self.spec.rest_rate_limits.requests_per_hour,
-            burst_size=self.spec.rest_rate_limits.burst_capacity
-        ))
+        if self.spec and self.spec.rest_rate_limits:
+            self.api_manager.configure_rate_limits(RateLimitConfig(
+                requests_per_second=self.spec.rest_rate_limits.requests_per_second,
+                requests_per_minute=self.spec.rest_rate_limits.requests_per_minute,
+                requests_per_hour=self.spec.rest_rate_limits.requests_per_hour,
+                burst_size=self.spec.rest_rate_limits.burst_capacity
+            ))
         
         self.api_manager.add_validator(self._validate_binance_data)
         
@@ -290,12 +298,16 @@ class BinanceClient(ExchangeClient):
             self.connection_stats["connection_attempts"] += 1
             
             # 바이낸스는 전체 티커 스트림 사용
-            self.websocket_client = EnhancedWebSocketClient(
-                uri=self.spec.websocket_spec.url,
-                name=f"Binance-{id(self)}",
-                max_retries=self.spec.websocket_spec.reconnect_limit,
-                timeout=30.0
-            )
+            if self.spec and self.spec.websocket_spec:
+                self.websocket_client = EnhancedWebSocketClient(
+                    uri=self.spec.websocket_spec.url,
+                    name=f"Binance-{id(self)}",
+                    max_retries=self.spec.websocket_spec.reconnect_limit,
+                    timeout=30.0
+                )
+            else:
+                logger.error(f"Binance WebSocket 사양을 찾을 수 없습니다.")
+                return False
             
             # 콜백 설정
             self.websocket_client.on_connect = self._on_websocket_connect
@@ -326,9 +338,15 @@ class BinanceClient(ExchangeClient):
         while self.is_connected:
             try:
                 current_time = time.time()
-                if current_time - self.last_ping > self.spec.websocket_spec.heartbeat_interval:
-                    # 바이낸스는 ping/pong 자동 처리되므로 연결 상태만 확인
-                    self.last_ping = current_time
+                if self.spec and self.spec.websocket_spec and self.spec.websocket_spec.heartbeat_interval:
+                    if current_time - self.last_ping > self.spec.websocket_spec.heartbeat_interval:
+                        # 바이낸스는 ping/pong 자동 처리되므로 연결 상태만 확인
+                        self.last_ping = current_time
+                else:
+                    # heartbeat_interval이 없으면 기본값 사용 또는 경고 로깅
+                    if current_time - self.last_ping > 30: # 기본 30초
+                        self.last_ping = current_time
+                        logger.warning(f"{self.exchange_name}: heartbeat_interval이 정의되지 않아 기본값 30초 사용")
                     
                 await asyncio.sleep(10)
                 
@@ -341,7 +359,7 @@ class BinanceClient(ExchangeClient):
         logger.info("Binance WebSocket 연결 성공")
         self.last_heartbeat = time.time()
     
-    async def _on_websocket_message(self, data: List):
+    async def _on_websocket_message(self, data: Union[Dict, List]):
         """WebSocket 메시지 수신 처리 (바이낸스는 배열로 전송)"""
         try:
             self.connection_stats["messages_received"] += 1
@@ -419,15 +437,16 @@ class BybitClient(ExchangeClient):
     def __init__(self):
         super().__init__("bybit")
         self.websocket_client = None
-        self.api_manager = APIManager("Bybit", self.spec.base_url)
+        self.api_manager = APIManager("Bybit", self.spec.base_url if self.spec else "")
         
         # 바이비트 특화 설정
-        self.api_manager.configure_rate_limits(RateLimitConfig(
-            requests_per_second=self.spec.rest_rate_limits.requests_per_second,
-            requests_per_minute=self.spec.rest_rate_limits.requests_per_minute,
-            requests_per_hour=self.spec.rest_rate_limits.requests_per_hour,
-            burst_size=self.spec.rest_rate_limits.burst_capacity
-        ))
+        if self.spec and self.spec.rest_rate_limits:
+            self.api_manager.configure_rate_limits(RateLimitConfig(
+                requests_per_second=self.spec.rest_rate_limits.requests_per_second,
+                requests_per_minute=self.spec.rest_rate_limits.requests_per_minute,
+                requests_per_hour=self.spec.rest_rate_limits.requests_per_hour,
+                burst_size=self.spec.rest_rate_limits.burst_capacity
+            ))
         
         self.api_manager.add_validator(self._validate_bybit_data)
         
@@ -449,12 +468,16 @@ class BybitClient(ExchangeClient):
         try:
             self.connection_stats["connection_attempts"] += 1
             
-            self.websocket_client = EnhancedWebSocketClient(
-                uri=self.spec.websocket_spec.url,
-                name=f"Bybit-{id(self)}",
-                max_retries=self.spec.websocket_spec.reconnect_limit,
-                timeout=30.0
-            )
+            if self.spec and self.spec.websocket_spec:
+                self.websocket_client = EnhancedWebSocketClient(
+                    uri=self.spec.websocket_spec.url,
+                    name=f"Bybit-{id(self)}",
+                    max_retries=self.spec.websocket_spec.reconnect_limit,
+                    timeout=30.0
+                )
+            else:
+                logger.error(f"Bybit WebSocket 사양을 찾을 수 없습니다.")
+                return False
             
             # 콜백 설정
             self.websocket_client.on_connect = self._on_websocket_connect
@@ -485,10 +508,15 @@ class BybitClient(ExchangeClient):
         while self.is_connected:
             try:
                 # 바이비트는 ping 메시지 전송 필요
-                ping_message = {"op": "ping"}
-                await self.websocket_client.send_message(ping_message)
+                if self.websocket_client:
+                    if self.websocket_client:
+                        ping_message = {"op": "ping"}
+                        await self.websocket_client.send_message(ping_message)
                 
-                await asyncio.sleep(self.spec.websocket_spec.heartbeat_interval)
+                if self.spec and self.spec.websocket_spec and self.spec.websocket_spec.heartbeat_interval:
+                    await asyncio.sleep(self.spec.websocket_spec.heartbeat_interval)
+                else:
+                    await asyncio.sleep(10) # 기본값
                 
             except Exception as e:
                 logger.error(f"Bybit ping 오류: {e}")
@@ -499,27 +527,30 @@ class BybitClient(ExchangeClient):
         logger.info("Bybit WebSocket 연결 성공")
         self.last_heartbeat = time.time()
     
-    async def _on_websocket_message(self, data: Dict):
+    async def _on_websocket_message(self, data: Union[Dict, List]):
         """WebSocket 메시지 수신 처리"""
         try:
             self.connection_stats["messages_received"] += 1
             self.connection_stats["last_message_time"] = time.time()
-            
-            # Pong 메시지 처리
-            if data.get("op") == "pong":
-                return
-            
-            # 티커 데이터 처리
-            if data.get("topic", "").startswith("tickers"):
-                ticker_info = data.get("data", {})
-                if isinstance(ticker_info, dict):
-                    symbol_raw = ticker_info.get("symbol", "")
-                    if symbol_raw.endswith("USDT"):
-                        symbol = symbol_raw.replace("USDT", "")
-                        
-                        normalized = normalize_ticker_data(self.exchange_name, ticker_info)
-                        if normalized and self.on_ticker_data:
-                            await self.on_ticker_data(symbol, normalized)
+
+            if isinstance(data, dict): # Add this check
+                # Pong 메시지 처리
+                if data.get("op") == "pong":
+                    return
+
+                # 티커 데이터 처리
+                if data.get("topic", "").startswith("tickers"):
+                    ticker_info = data.get("data", {})
+                    if isinstance(ticker_info, dict):
+                        symbol_raw = ticker_info.get("symbol", "")
+                        if symbol_raw.endswith("USDT"):
+                            symbol = symbol_raw.replace("USDT", "")
+
+                            normalized = normalize_ticker_data(self.exchange_name, ticker_info)
+                            if normalized and self.on_ticker_data:
+                                await self.on_ticker_data(symbol, normalized)
+            else:
+                logger.warning(f"Bybit: Unexpected message format received: {type(data)}") # Log unexpected types
                             
         except Exception as e:
             logger.error(f"Bybit 메시지 처리 오류: {e}")

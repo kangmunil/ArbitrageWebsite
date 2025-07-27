@@ -9,19 +9,18 @@
 """
 
 import asyncio
-import json
 import logging
 import time
 import uuid
 import threading
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Union
 from dataclasses import dataclass, field
-from collections import defaultdict, deque
+from collections import deque
 import requests
 import aiohttp
 from bs4 import BeautifulSoup
 
-from .enhanced_websocket import EnhancedWebSocketClient, ConnectionState
+from .enhanced_websocket import EnhancedWebSocketClient
 
 logger = logging.getLogger(__name__)
 
@@ -235,9 +234,13 @@ class UpbitWebSocketClient:
         logger.info("Upbit WebSocket 연결 성공, 마켓 구독 시작")
         await self._subscribe_markets()
     
-    async def _on_message(self, data: Dict):
+    async def _on_message(self, data: Union[Dict, List]):
         """메시지 수신 시 처리"""
         try:
+            # data가 딕셔너리인지 확인
+            if not isinstance(data, dict):
+                return
+                
             if data.get("type") == "ticker":
                 symbol = data["code"].replace("KRW-", "")
                 
@@ -270,7 +273,7 @@ class UpbitWebSocketClient:
                 {"type": "ticker", "codes": [f"KRW-{symbol}" for symbol in krw_markets]}
             ]
             
-            success = await self.client.send_message(json.dumps(subscribe_message))
+            success = await self.client.send_message(subscribe_message)
             if success:
                 self.subscribed_symbols = set(krw_markets)
                 logger.info(f"Upbit {len(krw_markets)}개 마켓 구독 완료")
@@ -305,7 +308,7 @@ class BinanceWebSocketClient:
         """연결 성공 시 처리"""
         logger.info("Binance WebSocket 연결 성공")
     
-    async def _on_message(self, data: List):
+    async def _on_message(self, data: Union[Dict, List]):
         """메시지 수신 시 처리"""
         try:
             if isinstance(data, list):

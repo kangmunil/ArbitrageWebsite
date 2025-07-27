@@ -13,11 +13,10 @@ import asyncio
 import json
 import logging
 import time
-import uuid
-from typing import Dict, Optional, Callable, Any, Awaitable
+from typing import Dict, Optional, Callable, Any, Awaitable, List, Union
 from enum import Enum
-import websockets
-from websockets.exceptions import ConnectionClosed, InvalidURI, InvalidMessage
+from websockets import connect as websockets_connect  # type: ignore
+from websockets.exceptions import ConnectionClosed, InvalidURI
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +52,7 @@ class EnhancedWebSocketClient:
         self.timeout = timeout
         
         self.state = ConnectionState.DISCONNECTED
-        self.websocket: Optional[websockets.WebSocketServerProtocol] = None
+        self.websocket: Optional[Any] = None
         self.retry_count = 0
         self.last_error: Optional[Exception] = None
         self.connected_at: Optional[float] = None
@@ -62,7 +61,7 @@ class EnhancedWebSocketClient:
         
         # 콜백 함수들
         self.on_connect: Optional[Callable[[], Awaitable[None]]] = None
-        self.on_message: Optional[Callable[[Dict], Awaitable[None]]] = None
+        self.on_message: Optional[Callable[[Union[Dict, List]], Awaitable[None]]] = None
         self.on_disconnect: Optional[Callable[[], Awaitable[None]]] = None
         self.on_error: Optional[Callable[[Exception], Awaitable[None]]] = None
     
@@ -71,8 +70,11 @@ class EnhancedWebSocketClient:
         delay = self.initial_retry_delay * (2 ** min(self.retry_count, 10))
         return min(delay, self.max_retry_delay)
     
-    def is_retriable_error(self, error: Exception) -> bool:
+    def is_retriable_error(self, error: Optional[Exception]) -> bool:
         """재시도 가능한 오류인지 확인"""
+        if error is None: # error가 None인 경우 처리
+            return False # None은 재시도 불가능한 오류로 간주
+        
         if isinstance(error, (ConnectionClosed, OSError, asyncio.TimeoutError)):
             return True
         if isinstance(error, InvalidURI):
@@ -89,7 +91,7 @@ class EnhancedWebSocketClient:
         
         try:
             self.websocket = await asyncio.wait_for(
-                websockets.connect(self.uri),
+                websockets_connect(self.uri),
                 timeout=self.timeout
             )
             
@@ -134,7 +136,7 @@ class EnhancedWebSocketClient:
             
         logger.info(f"{self.name}: WebSocket 연결 종료")
     
-    async def send_message(self, message: Dict) -> bool:
+    async def send_message(self, message: Union[Dict, List]) -> bool:
         """메시지 전송"""
         if not self.websocket or self.state != ConnectionState.CONNECTED:
             logger.warning(f"{self.name}: 연결되지 않은 상태에서 메시지 전송 시도")

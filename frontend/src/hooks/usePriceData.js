@@ -19,29 +19,47 @@ const usePriceData = () => {
   const reconnectAttemptsRef = useRef(0);
   const dataRef = useRef([]);
   
+  // 중복 로그 방지용
+  const lastLogTime = useRef({});
+  
+  // 중복 로그 방지 유틸리티
+  const logOnce = useCallback((key, message, logFn = console.log, cooldownMs = 5000) => {
+    const now = Date.now();
+    const lastTime = lastLogTime.current[key];
+    
+    if (lastTime && (now - lastTime) < cooldownMs) {
+      return;
+    }
+    
+    lastLogTime.current[key] = now;
+    logFn(message);
+  }, []);
+  
   // 1. REST API로 초기 데이터 빠르게 로드
   const loadInitialData = useCallback(async () => {
     try {
-      console.log('🚀 Loading initial data via REST API...');
+      if (process.env.NODE_ENV === 'development') {
+        logOnce('initial-load', '🚀 Loading initial data via REST API...', console.log, 30000);
+      }
       setConnectionStatus('loading');
       
-      const response = await fetch('http://localhost:8002/api/coins/latest');
+      const response = await fetch('http://localhost:8000/api/coins/latest');
+      
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
       const result = await response.json();
-      console.log(`✅ Initial data loaded: ${result.count} coins`);
-      console.log('📊 Sample coin:', result.data[0]);
+      if (process.env.NODE_ENV === 'development') {
+        logOnce('initial-loaded', `✅ Initial data loaded: ${result.count} coins`, console.log, 30000);
+        logOnce('sample-coin', `📊 Sample coin: ${JSON.stringify(result.data[0])}`, console.log, 60000);
+      }
       
       setData(result.data);
       dataRef.current = result.data;
       setLastUpdate(new Date());
       setConnectionStatus('loaded');
       setError(null);
-      
-      // 초기 데이터 로드 후 WebSocket 연결 시작
-      connectWebSocket();
       
     } catch (err) {
       console.error('❌ Failed to load initial data:', err);
@@ -51,21 +69,25 @@ const usePriceData = () => {
       // 3초 후 재시도
       setTimeout(loadInitialData, 3000);
     }
-  }, []);
+  }, [logOnce]);
   
   // 2. WebSocket 실시간 업데이트
   const connectWebSocket = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      console.log('WebSocket already connected');
+      console.log('⚠️ [usePriceData] WebSocket already connected');
       return;
     }
     
     try {
-      console.log('🔄 Connecting to WebSocket for real-time updates...');
-      wsRef.current = new WebSocket('ws://localhost:8002/ws/prices');
+      if (process.env.NODE_ENV === 'development') {
+        logOnce('ws-connecting', '🔄 Connecting to WebSocket for real-time updates...', console.log, 15000);
+      }
+      wsRef.current = new WebSocket('ws://localhost:8000/ws/prices');
       
       wsRef.current.onopen = () => {
-        console.log('✅ WebSocket connected for real-time updates');
+        if (process.env.NODE_ENV === 'development') {
+          logOnce('ws-connected', '✅ WebSocket connected for real-time updates', console.log, 30000);
+        }
         setConnectionStatus('connected');
         reconnectAttemptsRef.current = 0;
       };
@@ -76,18 +98,23 @@ const usePriceData = () => {
           
           // 연결 확인 메시지는 무시
           if (message.message) {
-            console.log('📡 WebSocket connection confirmed');
+            if (process.env.NODE_ENV === 'development') {
+              logOnce('ws-ping-confirmed', '📡 WebSocket connection confirmed', console.log, 60000);
+            }
             return;
           }
           
           // 실제 코인 데이터 배열인 경우 업데이트
           if (Array.isArray(message) && message.length > 0) {
-            console.log(`🔄 Real-time update: ${message.length} coins`);
-            console.log('💰 Price change sample:', {
-              symbol: message[0].symbol,
-              price: message[0].upbit_price,
-              time: new Date().toLocaleTimeString()
-            });
+            if (process.env.NODE_ENV === 'development') {
+              logOnce('realtime-update', `🔄 Real-time update: ${message.length} coins`, console.log, 60000);
+              
+              // BTC 데이터 확인용 로그
+              const btcData = message.find(coin => coin.symbol === 'BTC');
+              if (btcData) {
+                console.log(`💰 [usePriceData] BTC 수신: ${btcData.upbit_price} KRW / ${btcData.binance_price} USD`);
+              }
+            }
             
             // 기존 데이터와 비교하여 실제 변경이 있는지 확인
             const hasChanges = !dataRef.current.length || 
@@ -97,13 +124,13 @@ const usePriceData = () => {
               });
             
             if (hasChanges) {
-              console.log('✨ Data has changed, updating UI');
+              if (process.env.NODE_ENV === 'development') {
+                logOnce('data-changed', '✨ Data has changed, updating UI', console.log, 60000);
+              }
               setData([...message]); // 새 배열 참조로 강제 리렌더링
               dataRef.current = message;
               setLastUpdate(new Date());
               setError(null);
-            } else {
-              console.log('⏭️ No price changes detected');
             }
           }
           
@@ -113,18 +140,22 @@ const usePriceData = () => {
       };
       
       wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('❌ [usePriceData] WebSocket error:', error);
         setConnectionStatus('error');
       };
       
       wsRef.current.onclose = (event) => {
-        console.log('WebSocket disconnected:', event.code);
+        if (process.env.NODE_ENV === 'development') {
+          logOnce('ws-disconnected', `🔌 WebSocket disconnected: ${event.code} - ${event.reason}`, console.log, 5000);
+        }
         setConnectionStatus('disconnected');
         
         // 자동 재연결 (최대 10회)
         if (reconnectAttemptsRef.current < 10) {
           reconnectAttemptsRef.current++;
-          console.log(`Reconnecting WebSocket... (${reconnectAttemptsRef.current}/10)`);
+          if (process.env.NODE_ENV === 'development') {
+            logOnce(`ws-reconnect-${reconnectAttemptsRef.current}`, `Reconnecting WebSocket... (${reconnectAttemptsRef.current}/10)`, console.log, 3000);
+          }
           setTimeout(connectWebSocket, 3000);
         } else {
           console.error('Max WebSocket reconnect attempts reached');
@@ -136,7 +167,7 @@ const usePriceData = () => {
       console.error('WebSocket connection failed:', err);
       setConnectionStatus('error');
     }
-  }, []);
+  }, [logOnce]);
   
   // 수동 재연결
   const reconnect = useCallback(() => {
@@ -146,14 +177,19 @@ const usePriceData = () => {
   
   // 컴포넌트 마운트 시 초기 데이터 로드
   useEffect(() => {
-    loadInitialData();
+    const init = async () => {
+      await loadInitialData();
+      connectWebSocket();
+    };
+    
+    init();
     
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
       }
     };
-  }, [loadInitialData]);
+  }, [loadInitialData, connectWebSocket]);
   
   return {
     data,

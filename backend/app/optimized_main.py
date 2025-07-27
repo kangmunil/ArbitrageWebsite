@@ -18,8 +18,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from . import optimized_services
-from . import liquidation_services
-from .liquidation_services import get_aggregated_liquidation_data
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from liquidation_service.liquidation_stats_collector import get_aggregated_liquidation_data, start_liquidation_stats_collection, set_websocket_manager
 from .database import get_db
 from .models import Cryptocurrency
 from .optimized_services import shared_data, TickerData
@@ -88,6 +90,7 @@ class ConnectionManager:
             logger.info(f"{len(disconnected_clients)}개 연결 정리, {successful_sends}개 클라이언트에 전송 성공")
 
 manager = ConnectionManager()
+liquidation_manager = ConnectionManager()
 
 # 최적화된 데이터 집계기
 class OptimizedPriceAggregator:
@@ -336,7 +339,10 @@ async def startup_event():
     # 백그라운드 서비스들을 비동기적으로 시작
     asyncio.create_task(optimized_services.start_optimized_services())
     asyncio.create_task(price_aggregator.run_periodic_aggregation())
-    asyncio.create_task(liquidation_services.start_liquidation_collection())
+    
+    # 청산 통계 서비스 시작
+    set_websocket_manager(liquidation_manager)
+    asyncio.create_task(start_liquidation_stats_collection())
     
     logger.info("모든 백그라운드 서비스 시작 완료")
 

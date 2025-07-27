@@ -22,6 +22,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import psutil
 import aiohttp
+from aiohttp import ClientTimeout
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +168,7 @@ class ExchangeMonitor:
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(endpoint, timeout=10) as response:
+                async with session.get(endpoint, timeout=ClientTimeout(total=10)) as response:
                     response_time = time.time() - start_time
                     
                     # 응답 시간 기록
@@ -196,9 +197,10 @@ class ExchangeMonitor:
             "avg_response_time": self._calculate_avg_response_time(exchange)
         }
     
-    def _record_error(self, exchange: str):
+    def _record_error(self, exchange: str, error_message: str):
         """오류 기록"""
         self.error_counts[exchange] += 1
+        logger.error(f"Exchange {exchange} error: {error_message}")
     
     def _calculate_avg_response_time(self, exchange: str) -> float:
         """평균 응답 시간 계산"""

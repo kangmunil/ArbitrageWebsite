@@ -12,7 +12,7 @@ API 장애 감지 및 페일오버 시스템
 import asyncio
 import time
 import logging
-from typing import Dict, List, Optional, Set, Callable, Any
+from typing import Dict, List, Optional, Set, Callable, Any, Awaitable
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import deque, defaultdict
@@ -53,7 +53,7 @@ class FailoverEvent:
     """페일오버 이벤트"""
     exchange: str
     trigger: FailoverTrigger
-    primary_endpoint: str
+    primary_endpoint: Optional[str]
     backup_endpoint: Optional[str]
     timestamp: float = field(default_factory=time.time)
     details: Dict[str, Any] = field(default_factory=dict)
@@ -80,6 +80,7 @@ class HealthChecker:
         
         # REST API 헬스체크
         start_time = time.time()
+        url = ""
         
         try:
             # 거래소별 간단한 헬스체크 엔드포인트
@@ -94,7 +95,7 @@ class HealthChecker:
             url = f"{spec.base_url}{endpoint}"
             
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=self.timeout) as response:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=self.timeout)) as response:
                     response_time = time.time() - start_time
                     
                     if response.status == 200:
@@ -162,8 +163,8 @@ class FailoverManager:
         self.failover_history: deque = deque(maxlen=100)
         
         # 이벤트 콜백
-        self.on_failover: Optional[Callable[[FailoverEvent], None]] = None
-        self.on_recovery: Optional[Callable[[str], None]] = None
+        self.on_failover: Optional[Callable[[FailoverEvent], Awaitable[None]]] = None
+        self.on_recovery: Optional[Callable[[str], Awaitable[None]]] = None
         
         # 설정
         self.failover_threshold = 3  # 연속 실패 횟수
@@ -281,14 +282,16 @@ class FailoverManager:
         self.failover_history.append(event)
         
         if self.on_failover:
-            await self.on_failover(event)
+            callback = self.on_failover
+            await callback(event)
     
     async def _handle_recovery(self, exchange: str):
         """서비스 복구 처리"""
         logger.info(f"{exchange} 서비스 복구됨")
         
         if self.on_recovery:
-            await self.on_recovery(exchange)
+            callback = self.on_recovery
+            await callback(exchange)
     
     def get_service_status(self, exchange: str) -> ServiceStatus:
         """서비스 상태 반환"""
@@ -363,7 +366,8 @@ class ResilientExchangeManager:
             if client:
                 self.exchange_clients[exchange_name] = client
                 # 클라이언트 오류 콜백 설정
-                client.on_error = lambda e, ex=exchange_name: self._on_client_error(ex, e)
+                if client.on_error:
+                    client.on_error = lambda e, ex=exchange_name: self._on_client_error(ex, e)
         
         # 백그라운드 태스크 시작
         self.is_running = True

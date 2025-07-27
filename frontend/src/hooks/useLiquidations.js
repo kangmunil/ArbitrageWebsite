@@ -14,44 +14,78 @@ export const useLiquidations = (windowMin = 5) => {
   const cacheRef = useRef(null);
   const intervalRef = useRef(null);
   const wsRef = useRef(null);
+  
+  // 중복 로그 방지용
+  const lastLogTime = useRef({});
+
+  // 중복 로그 방지 유틸리티
+  const logOnce = useCallback((key, message, logFn = console.log, cooldownMs = 5000) => {
+    const now = Date.now();
+    const lastTime = lastLogTime.current[key];
+    
+    // 쿨다운 시간 내에 동일한 키로 로그가 기록되었으면 무시
+    if (lastTime && (now - lastTime) < cooldownMs) {
+      return;
+    }
+    
+    lastLogTime.current[key] = now;
+    logFn(message);
+  }, []);
 
   // 청산 데이터 정규화 함수
   const normalizeLiquidationData = useCallback((liqItem) => {
-    // CEX API 필드 매핑 오류 교정
-    // side: 'sell'/'buy', positionSide: 'long'/'short' 또는 다른 형식들
-    
-    let isLongLiquidation = false;
-    let isShortLiquidation = false;
-    
-    if (liqItem.side && liqItem.positionSide) {
-      // Binance 스타일: side + positionSide 조합
-      isLongLiquidation = liqItem.side === 'sell' && liqItem.positionSide === 'long';
-      isShortLiquidation = liqItem.side === 'buy' && liqItem.positionSide === 'short';
-    } else if (liqItem.side) {
-      // 단순 side 필드만 있는 경우의 추론 로직
-      // 일반적으로 'long' = 롱 청산, 'short' = 숏 청산
-      isLongLiquidation = liqItem.side === 'long' || liqItem.side === 'sell';
-      isShortLiquidation = liqItem.side === 'short' || liqItem.side === 'buy';
-    } else {
-      // 백엔드에서 이미 정규화된 데이터인 경우
-      isLongLiquidation = Boolean(liqItem.long_volume || liqItem.longVolume);
-      isShortLiquidation = Boolean(liqItem.short_volume || liqItem.shortVolume);
+    let longLiq = 0;
+    let shortLiq = 0;
+    const usdAmount = liqItem.usd || liqItem.amount || liqItem.volume || liqItem.value || 0;
+
+    // Case 1: Aggregated data from backend (has long_volume, short_volume)
+    if (liqItem.long_volume !== undefined || liqItem.short_volume !== undefined) {
+      longLiq = liqItem.long_volume || 0;
+      shortLiq = liqItem.short_volume || 0;
     }
-    
-    const usdAmount = liqItem.usd || liqItem.amount || liqItem.volume || 0;
-    
+    // Case 2: Individual liquidation data (has side, positionSide)
+    else {
+      const side = liqItem.side ? liqItem.side.toLowerCase() : '';
+      const positionSide = liqItem.positionSide ? liqItem.positionSide.toLowerCase() : '';
+
+      // 거래소별 매핑 정확성 개선
+      if (side === 'sell' || side === 'long' || positionSide === 'long') { 
+        // Long liquidation: SELL order liquidating a LONG position
+        longLiq = usdAmount;
+      } else if (side === 'buy' || side === 'short' || positionSide === 'short') { 
+        // Short liquidation: BUY order liquidating a SHORT position
+        shortLiq = usdAmount;
+      } else if (usdAmount > 0) {
+        // 방향을 알 수 없는 경우: 랜덤하게 long/short 중 하나로 할당 (50:50)
+        // 개발 모드에서는 로그로 알림 (중복 방지)
+        if (process.env.NODE_ENV === 'development') {
+          const logKey = `unknown-direction-${liqItem.side}-${liqItem.positionSide}`;
+          logOnce(logKey, `⚠️ 청산 방향 미확정 - side:${liqItem.side}, positionSide:${liqItem.positionSide}, 금액:$${usdAmount}`, console.warn, 10000);
+        }
+        
+        // 시간 기반 해시로 일관성 있는 랜덤 할당
+        const timeHash = (liqItem.timestamp || Date.now()) % 100;
+        if (timeHash < 50) {
+          longLiq = usdAmount;
+        } else {
+          shortLiq = usdAmount;
+        }
+      }
+    }
+
     return {
       ...liqItem,
-      longLiq: isLongLiquidation ? usdAmount : 0,
-      shortLiq: isShortLiquidation ? usdAmount : 0,
-      // 디버깅용 필드
-      _original: { side: liqItem.side, positionSide: liqItem.positionSide }
+      longLiq: longLiq,
+      shortLiq: shortLiq,
+      _original: { side: liqItem.side, positionSide: liqItem.positionSide },
     };
-  }, []);
+  }, [logOnce]);
 
   // 요약 데이터 변환 함수 (정규화 적용)
   const transformSummaryData = useCallback((data) => {
     const exchangeSummary = {};
+    
+    // 디버깅 로그 제거 (너무 많은 스팸)
     
     if (Array.isArray(data)) {
       data.forEach(item => {
@@ -75,34 +109,35 @@ export const useLiquidations = (windowMin = 5) => {
               exchangeSummary[exchange].short += normalized.shortLiq;
             }
             
-            // 디버깅 로그 (방향 정확성 테스트용)
-            if (process.env.NODE_ENV === 'development' && normalized._original) {
-              console.log(`[${exchange}] 원본:`, normalized._original, '→ 정규화:', {
-                longLiq: normalized.longLiq,
-                shortLiq: normalized.shortLiq
-              });
-            }
+            // 디버깅 로그 (방향 정확성 테스트용) - 중복 방지
+            // 개발용 로그 제거 (너무 많은 스팸)
           });
         }
       });
     }
     
-    return Object.entries(exchangeSummary)
-      .map(([exchange, data]) => ({
-        exchange: exchange.charAt(0).toUpperCase() + exchange.slice(1).toLowerCase(),
+    // 고정된 거래소 순서 (차트 일관성 유지)
+    const fixedOrderExchanges = ['Binance', 'Bybit', 'Okx', 'Bitget', 'Bitmex', 'Hyperliquid'];
+    
+    const result = fixedOrderExchanges.map(exchange => {
+      const lowerExchange = exchange.toLowerCase();
+      const data = exchangeSummary[lowerExchange] || { long: 0, short: 0 };
+      return {
+        exchange: exchange,
         long: data.long,
         short: data.short
-      }))
-      .sort((a, b) => (b.long + b.short) - (a.long + a.short))
-      .slice(0, 5);
-  }, [normalizeLiquidationData]);
+      };
+    }).slice(0, 6);
+    
+    // 디버깅 로그 제거
+    
+    return result;
+  }, [normalizeLiquidationData, logOnce]);
 
   // 거래소별 트렌드 데이터 생성 (5분 누적)
   const generateTrendByExchange = useCallback((summaryData) => {
-    // 실제 요약 데이터가 있으면 그것을 기반으로, 없으면 더미 데이터
-    const exchanges = summaryData.length > 0 
-      ? summaryData.slice(0, 5).map(item => item.exchange)
-      : ['Binance', 'Bybit', 'Okx', 'Bitget', 'Bitmex'];
+    // 고정된 거래소 순서 사용 (차트 일관성 유지)
+    const exchanges = ['Binance', 'Bybit', 'Okx', 'Bitget', 'Bitmex', 'Hyperliquid'];
     
     return exchanges.map(exchange => {
       // 실제 데이터에서 해당 거래소 찾기
@@ -110,14 +145,14 @@ export const useLiquidations = (windowMin = 5) => {
       
       if (actualData) {
         return {
-          exchange: exchange.length > 6 ? exchange.slice(0, 6) : exchange, // 6자 제한
+          exchange: exchange, // 전체 거래소 이름 표시
           long: actualData.long / 1000000, // M 단위로 변환
           short: actualData.short / 1000000
         };
       } else {
         // 더미 데이터
         return {
-          exchange: exchange.length > 6 ? exchange.slice(0, 6) : exchange,
+          exchange: exchange, // 전체 거래소 이름 표시
           long: Math.random() * 2 + 0.2, // 0.2 ~ 2.2M
           short: Math.random() * 1.5 + 0.1 // 0.1 ~ 1.6M
         };
@@ -189,7 +224,9 @@ export const useLiquidations = (windowMin = 5) => {
       const ws = new WebSocket(`ws://localhost:8000/ws/liquidations`);
       
       ws.onopen = () => {
-        console.log('청산 데이터 WebSocket 연결됨');
+        if (process.env.NODE_ENV === 'development') {
+          logOnce('ws-liquidation-connected', '청산 데이터 WebSocket 연결됨', console.log, 30000);
+        }
       };
       
       ws.onmessage = (event) => {
@@ -199,20 +236,17 @@ export const useLiquidations = (windowMin = 5) => {
             // 실시간 청산 데이터 정규화 및 디버깅
             const normalized = normalizeLiquidationData(data.data);
             
-            // 개발 모드에서 방향 정확성 테스트 로그
+            // 개발 모드에서 방향 정확성 테스트 로그 (중복 방지)
             if (process.env.NODE_ENV === 'development') {
-              console.log(`🔄 [${data.exchange}] 실시간 청산:`, {
-                원본: data.data,
-                정규화: { longLiq: normalized.longLiq, shortLiq: normalized.shortLiq },
-                시간: new Date().toLocaleTimeString()
-              });
+              const logKey = `realtime-${data.exchange || 'unknown'}-${data.data?.side}-${data.data?.positionSide}`;
+              logOnce(logKey, `🔄 [${data.exchange || 'unknown'}] 실시간 청산: 원본=${JSON.stringify(data.data)}, 정규화=${JSON.stringify({ longLiq: normalized.longLiq, shortLiq: normalized.shortLiq })}, 시간=${new Date().toLocaleTimeString()}`, console.log, 8000);
               
-              // 가격 움직임과 청산 방향 일치성 체크 힌트
+              // 가격 움직임과 청산 방향 일치성 체크 힌트 (간격 제한)
               if (normalized.longLiq > 0) {
-                console.log('📉 롱 청산 발생 - 가격 하락 추세일 가능성');
+                logOnce('long-liquidation-hint', '📉 롱 청산 발생 - 가격 하락 추세일 가능성', console.log, 20000);
               }
               if (normalized.shortLiq > 0) {
-                console.log('📈 숏 청산 발생 - 가격 상승 추세일 가능성');
+                logOnce('short-liquidation-hint', '📈 숏 청산 발생 - 가격 상승 추세일 가능성', console.log, 20000);
               }
             }
             
@@ -228,7 +262,9 @@ export const useLiquidations = (windowMin = 5) => {
       };
       
       ws.onclose = () => {
-        console.log('청산 데이터 WebSocket 연결 해제됨');
+        if (process.env.NODE_ENV === 'development') {
+          logOnce('ws-liquidation-disconnected', '청산 데이터 WebSocket 연결 해제됨', console.log, 10000);
+        }
         // 3초 후 재연결 시도
         setTimeout(connectWebSocket, 3000);
       };
@@ -241,7 +277,7 @@ export const useLiquidations = (windowMin = 5) => {
     } catch (err) {
       console.error('WebSocket 연결 실패:', err);
     }
-  }, [fetchData, normalizeLiquidationData]);
+  }, [fetchData, normalizeLiquidationData, logOnce]);
 
   // refetch 함수
   const refetch = useCallback(() => {

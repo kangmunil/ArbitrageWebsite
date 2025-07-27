@@ -261,7 +261,7 @@ class APIManager:
                 
                 async with aiohttp.ClientSession() as session:
                     async with session.request(
-                        method, full_url, timeout=timeout, **kwargs
+                        method, full_url, timeout=aiohttp.ClientTimeout(total=timeout), **kwargs
                     ) as response:
                         
                         response_time = time.time() - start_time

@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useCallback, Suspense, lazy } from 'react';
 import './App.css';
 import Header from './components/Header';
 import usePriceData from './hooks/usePriceData';
@@ -40,17 +40,7 @@ function App() {
     setSelectedGlobalExchange(exchange);
   }, []);
   
-  // 데이터 로딩 상태 메모이제이션
-  const isDataLoaded = useMemo(() => {
-    console.log('🏠 App.js - Price data status:', {
-      length: allCoinsData?.length || 0,
-      connectionStatus,
-      lastUpdate: lastUpdate?.toLocaleTimeString(),
-      firstCoinPrice: allCoinsData?.[0]?.upbit_price,
-      error: error
-    });
-    return allCoinsData && allCoinsData.length > 0;
-  }, [allCoinsData, connectionStatus, lastUpdate, error]);
+  
   
   // 연결 상태 표시
   const getConnectionStatusColor = (status) => {

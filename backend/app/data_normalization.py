@@ -14,7 +14,7 @@ import logging
 import asyncio
 import statistics
 from typing import Dict, List, Optional, Set, Any, Tuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from enum import Enum
 from collections import defaultdict, deque
 import numpy as np
@@ -40,7 +40,7 @@ class ValidationResult(Enum):
 @dataclass
 class NormalizedTicker:
     """정규화된 티커 데이터"""
-    symbol: str
+    symbol: Optional[str]
     exchange: str
     
     # 가격 정보
@@ -312,8 +312,8 @@ class ConsistencyChecker:
         for symbol, check in consistency_results.items():
             if not check.is_consistent and len(check.prices) >= 2:
                 prices = check.prices
-                min_exchange = min(prices, key=prices.get)
-                max_exchange = max(prices, key=prices.get)
+                min_exchange = min(prices, key=lambda k: prices.get(k, 0))
+                max_exchange = max(prices, key=lambda k: prices.get(k, 0))
                 
                 min_price = prices[min_exchange]
                 max_price = prices[max_exchange]
@@ -420,10 +420,11 @@ class DataPipeline:
         except Exception as e:
             logger.error(f"일관성 검사 실패: {e}")
     
-    def get_normalized_data(self, symbol: str = None, exchange: str = None) -> Dict[str, Any]:
+    def get_normalized_data(self, symbol: Optional[str] = None, exchange: Optional[str] = None) -> Dict[str, Any]:
         """정규화된 데이터 반환"""
         if symbol and exchange:
-            return self.normalized_data.get(symbol, {}).get(exchange)
+            data = self.normalized_data.get(symbol, {}).get(exchange, {})
+            return asdict(data) if isinstance(data, NormalizedTicker) else data
         elif symbol:
             return self.normalized_data.get(symbol, {})
         else:

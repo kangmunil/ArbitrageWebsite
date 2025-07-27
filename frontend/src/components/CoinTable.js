@@ -5,8 +5,12 @@ import cacheManager, { cachedFetch } from '../utils/cacheManager';
 import PriceCell from './PriceCell';
 import PremiumCell from './PremiumCell';
 
-// 개별 코인 행 컴포넌트 메모이제이션
-const CoinRow = memo(({ coin, index, getCoinName, formatPrice, exchangeDisplayNames, selectedDomesticExchange, selectedGlobalExchange }) => {
+// 개별 코인 행 컴포넌트 (메모이제이션 완전 제거 - 강제 리렌더링)
+const CoinRow = ({ coin, index, getCoinName, formatPrice, formatVolume, exchangeDisplayNames, selectedDomesticExchange, selectedGlobalExchange }) => {
+  // BTC 행 렌더링 확인용 로그 (상세 추적)
+  if (coin.symbol === 'BTC') {
+    console.log(`🎯 [CoinRow] BTC 수신: domestic=${coin.domestic_price}, global=${coin.global_price}, premium=${coin.premium}, _renderKey=${coin._renderKey}`);
+  }
   const getCoinIcon = useCallback((symbol) => {
     const iconUrls = {
       'BTC': 'https://assets.coingecko.com/coins/images/1/standard/bitcoin.png',
@@ -87,18 +91,16 @@ const CoinRow = memo(({ coin, index, getCoinName, formatPrice, exchangeDisplayNa
       <div className="col-span-2 flex flex-col items-end">
         <span className="text-white text-xs">
           {coin.domestic_volume && coin.domestic_volume > 0 ? 
-            `${(coin.domestic_volume / 100_000_000).toFixed(0)}억 원` : 'N/A'}
+            formatVolume(coin.domestic_volume, 'KRW') : 'N/A'}
         </span>
         <span className="text-gray-400 text-xs">
           {coin.global_volume && coin.global_volume > 0 ? 
-            `$${(coin.global_volume / 1_000_000).toFixed(1)}M` : 'N/A'}
+            formatVolume(coin.global_volume, 'USD') : 'N/A'}
         </span>
       </div>
     </div>
   );
-});
-
-CoinRow.displayName = 'CoinRow';
+};
 
 /**
  * 코인 가격 비교 테이블 컴포넌트.
@@ -133,6 +135,35 @@ const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDom
   const [showAll, setShowAll] = useState(false); // 더보기 상태
   const [coinNames, setCoinNames] = useState({}); // API에서 가져온 한글 코인명
   const [isLoadingNames, setIsLoadingNames] = useState(true); // 한글명 로딩 상태
+  
+  // 로그 관련 유틸리티 제거 (더 이상 사용하지 않음)
+
+  // 거래량 포맷팅 함수 (사용자 친화적)
+  const formatVolume = useCallback((volume, currency) => {
+    if (!volume || volume <= 0) return 'N/A';
+    
+    if (currency === 'KRW') {
+      // KRW: 억원 단위로 표시
+      if (volume >= 100_000_000) {
+        return `${(volume / 100_000_000).toFixed(0)}억`;
+      } else if (volume >= 10_000_000) {
+        return `${(volume / 10_000_000).toFixed(1)}천만`;
+      } else if (volume >= 1_000_000) {
+        return `${(volume / 1_000_000).toFixed(1)}백만`;
+      } else {
+        return `${(volume / 10_000).toFixed(0)}만`;
+      }
+    } else {
+      // USD: 백만달러 단위로 표시
+      if (volume >= 1_000_000) {
+        return `$${(volume / 1_000_000).toFixed(1)}M`;
+      } else if (volume >= 1_000) {
+        return `$${(volume / 1_000).toFixed(1)}K`;
+      } else {
+        return `$${volume.toFixed(0)}`;
+      }
+    }
+  }, []);
 
   // 컴포넌트 마운트 시 한글 코인명 데이터 로드 (캐시 적용)
   useEffect(() => {
@@ -143,7 +174,9 @@ const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDom
         if (cachedNames) {
           setCoinNames(cachedNames);
           setIsLoadingNames(false);
-          console.log('한글 코인명 캐시 로드');
+          if (process.env.NODE_ENV === 'development') {
+            console.log('한글 코인명 캐시 로드');
+          }
           return;
         }
         
@@ -189,19 +222,14 @@ const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDom
   const processedData = useMemo(() => {
     
     if (!allCoinsData || allCoinsData.length === 0) {
-      console.log('❌ CoinTable: No data to process');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('❌ CoinTable: No data to process');
+      }
       return [];
     }
 
-    let data = allCoinsData.map((coin, index) => {
-      if (index === 0) { // 첫 번째 코인만 로그
-        console.log('💎 CoinTable processing:', coin.symbol, {
-          upbit_price: coin.upbit_price,
-          binance_price: coin.binance_price,
-          usdt_krw_rate: coin.usdt_krw_rate,
-          timestamp: new Date().toLocaleTimeString()
-        });
-      }
+    let data = allCoinsData.map((coin) => {
+      // 개발용 로그 제거 (성능상 부담이 되고 너무 많은 스팸)
       
       // 선택된 국내 거래소 가격, 거래량, 변동률
       const domesticPriceKey = `${selectedDomesticExchange}_price`;
@@ -213,11 +241,12 @@ const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDom
 
       // 선택된 해외 거래소 가격, 거래량, 변동률
       const globalPriceKey = `${selectedGlobalExchange}_price`;
-      const globalVolumeKey = `${selectedGlobalExchange}_volume`;
+      const globalVolumeKey = `${selectedGlobalExchange}_volume_usd`; // USD 원본 거래량 사용
       const globalChangePercentKey = `${selectedGlobalExchange}_change_percent`;
       const globalPrice = coin[globalPriceKey];
       const globalVolume = coin[globalVolumeKey];
       const globalChangePercent = coin[globalChangePercentKey];
+      
       
       // 김치 프리미엄 계산 - USDT/KRW 환율 사용
       let premium = null;
@@ -229,7 +258,13 @@ const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDom
         }
       }
 
-      return {
+      // BTC 가격 변화 추적 (디버그용) - 더 상세한 정보
+      if (coin.symbol === 'BTC') {
+        console.log(`🔍 [CoinTable] BTC 가격 처리: domestic=${domesticPrice} (원본: ${coin[domesticPriceKey]}), global=${globalPrice}, premium=${premium}`);
+        console.log(`🔍 [CoinTable] BTC PriceCell로 전달될 값: domestic_price=${domesticPrice}`);
+      }
+
+      const processedCoin = {
         ...coin,
         domestic_price: domesticPrice,
         domestic_volume: domesticVolume,
@@ -239,6 +274,13 @@ const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDom
         global_change_percent: globalChangePercent,
         premium: premium,
       };
+      
+      // BTC 객체 생성 확인
+      if (coin.symbol === 'BTC') {
+        console.log(`📦 [CoinTable] BTC 최종 객체 생성: domestic_price=${processedCoin.domestic_price}`);
+      }
+      
+      return processedCoin;
     }).filter(coin => coin.domestic_price !== null && coin.global_price !== null); // 필터 다시 활성화
     
 
@@ -259,7 +301,19 @@ const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDom
   
 
   const displayData = useMemo(() => {
-    return showAll ? processedData : processedData.slice(0, 20);
+    const result = showAll ? processedData : processedData.slice(0, 20);
+    
+    // BTC displayData 확인
+    const btcData = result.find(coin => coin.symbol === 'BTC');
+    if (btcData) {
+      console.log(`🎮 [CoinTable] displayData에서 BTC: domestic_price=${btcData.domestic_price}`);
+    }
+    
+    // 강제 리렌더링을 위해 각 객체에 timestamp 추가
+    return result.map(coin => ({
+      ...coin,
+      _renderKey: Date.now() + Math.random() // 고유 키로 강제 리렌더링
+    }));
   }, [processedData, showAll]);
 
   if (!allCoinsData || allCoinsData.length === 0 || isLoadingNames) {
@@ -412,11 +466,12 @@ const CoinTable = memo(({ allCoinsData, selectedDomesticExchange, setSelectedDom
         <div>
           {displayData.map((coin, index) => (
             <CoinRow
-              key={coin.symbol}
+              key={`${coin.symbol}-${coin._renderKey}`}
               coin={coin}
               index={index}
               getCoinName={getCoinName}
               formatPrice={formatPrice}
+              formatVolume={formatVolume}
               exchangeDisplayNames={exchangeDisplayNames}
               selectedDomesticExchange={selectedDomesticExchange}
               selectedGlobalExchange={selectedGlobalExchange}

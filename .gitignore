@@ -14,3 +14,8 @@ node_modules/
 
 # Optional: npm debug log
 npm-debug.log*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini

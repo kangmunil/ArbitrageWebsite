@@ -1,71 +1,102 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 
 /**
- * 김프 변화를 시각적으로 표시하는 셀 컴포넌트
+ * 김프 변화를 시각적으로 표시하는 셀 컴포넌트 (직접 DOM 조작 방식)
  */
 const PremiumCell = ({ premium }) => {
-  const [isFlashing, setIsFlashing] = useState(false);
-  const [premiumChange, setPremiumChange] = useState(null);
-  const prevPremiumRef = useRef(premium);
+  const spanRef = useRef(null);
+  const prevPremiumRef = useRef(null);
+  const animationTimeoutRef = useRef(null);
+  
+  // 컴포넌트 호출 추적
+  console.log(`🔍 [PremiumCell] 컴포넌트 호출됨: premium=${premium}`);
+  
+  // 프리미엄 색상 결정 함수
+  const getPremiumColor = useCallback((premiumValue) => {
+    if (premiumValue > 0) return 'text-emerald-400';
+    if (premiumValue < 0) return 'text-red-400';
+    return 'text-gray-400';
+  }, []);
   
   useEffect(() => {
-    if (prevPremiumRef.current !== premium && prevPremiumRef.current !== null) {
-      const change = premium > prevPremiumRef.current ? 'up' : 'down';
-      setPremiumChange(change);
-      setIsFlashing(true);
-      
-      // 플래시 효과 제거
-      const timer = setTimeout(() => {
-        setIsFlashing(false);
-        setPremiumChange(null);
-      }, 1200);
-      
-      prevPremiumRef.current = premium;
-      return () => clearTimeout(timer);
+    if (!spanRef.current) return;
+    
+    const currentPremium = premium;
+    const prevPremium = prevPremiumRef.current;
+    
+    // 디버그: 모든 렌더링 추적
+    console.log(`🔍 [PremiumCell] 렌더링: premium=${currentPremium}, prev=${prevPremium}`);
+    
+    // 첫 번째 렌더링이거나 프리미엄이 null인 경우
+    if (prevPremium === null || currentPremium === null) {
+      console.log(`🔍 [PremiumCell] 초기 설정: ${currentPremium}`);
+      prevPremiumRef.current = currentPremium;
+      spanRef.current.textContent = currentPremium !== null ? `${currentPremium > 0 ? '+' : ''}${currentPremium.toFixed(2)}%` : 'N/A';
+      // 초기 색상 설정
+      if (currentPremium !== null) {
+        spanRef.current.className = `premium-cell transition-all duration-300 ease-in-out px-2 py-1 rounded-md ${getPremiumColor(currentPremium)}`;
+      }
+      return;
     }
-    prevPremiumRef.current = premium;
-  }, [premium]);
+    
+    // 프리미엄 변화가 있는 경우
+    if (prevPremium !== currentPremium) {
+      const change = currentPremium > prevPremium ? 'up' : 'down';
+      
+      console.log(`📈 [PremiumCell] 김프 변화: ${prevPremium.toFixed(2)}% → ${currentPremium.toFixed(2)}% (${change === 'up' ? '상승' : '하락'})`);
+      
+      // 즉시 DOM 업데이트
+      spanRef.current.textContent = `${currentPremium > 0 ? '+' : ''}${currentPremium.toFixed(2)}%`;
+      
+      // 기존 애니메이션 클래스 제거
+      const baseClass = `premium-cell transition-all duration-300 ease-in-out px-2 py-1 rounded-md ${getPremiumColor(currentPremium)}`;
+      spanRef.current.className = baseClass;
+      
+      // 애니메이션 클래스 추가
+      const flashClass = change === 'up' 
+        ? 'premium-cell-flash-up bg-emerald-400/60 border-2 border-emerald-300 shadow-xl shadow-emerald-400/50 scale-105 text-white font-bold'
+        : 'premium-cell-flash-down bg-red-400/60 border-2 border-red-300 shadow-xl shadow-red-400/50 scale-105 text-white font-bold';
+      
+      setTimeout(() => {
+        if (spanRef.current) {
+          spanRef.current.className = `premium-cell transition-all duration-300 ease-in-out px-2 py-1 rounded-md ${flashClass}`;
+        }
+      }, 10);
+      
+      // 기존 타이머 클리어
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
+      }
+      
+      // 1.5초 후 원래 상태로 복구
+      animationTimeoutRef.current = setTimeout(() => {
+        if (spanRef.current) {
+          spanRef.current.className = baseClass;
+        }
+      }, 1500);
+      
+      prevPremiumRef.current = currentPremium;
+    } else {
+      // 프리미엄 변화가 없어도 텍스트 업데이트
+      spanRef.current.textContent = `${currentPremium > 0 ? '+' : ''}${currentPremium.toFixed(2)}%`;
+    }
+  }, [premium, getPremiumColor]);
   
-  const getFlashClass = () => {
-    if (!isFlashing) return '';
-    return premiumChange === 'up' 
-      ? 'bg-emerald-500/20 border border-emerald-500/50' 
-      : 'bg-red-500/20 border border-red-500/50';
-  };
-  
-  const getPremiumChangeIcon = () => {
-    if (!premiumChange) return null;
-    return premiumChange === 'up' ? '📈' : '📉';
-  };
-  
-  const getPremiumColor = () => {
-    if (premium > 0) return 'text-emerald-400';
-    if (premium < 0) return 'text-red-400';
-    return 'text-gray-400';
-  };
-  
-  const getIntensityIcon = () => {
-    if (premium === null) return '';
-    const abs = Math.abs(premium);
-    if (abs > 5) return '🔥';
-    if (abs > 2) return '⚡';
-    if (abs > 1) return '💫';
-    return '';
-  };
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
+      }
+    };
+  }, []);
   
   return (
-    <span className={`transition-all duration-1200 px-1 rounded ${getFlashClass()} ${getPremiumColor()}`}>
+    <span 
+      ref={spanRef}
+      className="premium-cell transition-all duration-300 ease-in-out px-2 py-1 rounded-md text-gray-400"
+    >
       {premium !== null ? `${premium > 0 ? '+' : ''}${premium.toFixed(2)}%` : 'N/A'}
-      {getPremiumChangeIcon() && (
-        <span className="ml-1 text-xs opacity-75">
-          {getPremiumChangeIcon()}
-        </span>
-      )}
-      {getIntensityIcon() && (
-        <span className="ml-1 text-xs opacity-60">
-          {getIntensityIcon()}
-        </span>
-      )}
     </span>
   );
 };

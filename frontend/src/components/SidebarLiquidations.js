@@ -6,35 +6,64 @@ const SidebarLiquidations = () => {
   const { trend, error, lastUpdate } = useLiquidations(5);
 
   // 차트 데이터 메모이제이션
-  const chartData5min = useMemo(() => 
-    trend.map(item => ({
-      ...item,
-      exchange: item.exchange.startsWith('Hyperl') ? 'HL' : item.exchange
-    })), [trend]
-  );
+  const chartData5min = useMemo(() => {
+    // 항상 6개 거래소를 보장하는 기본 데이터
+    const defaultData = [
+      { exchange: 'Binance', long: 0, short: 0 },
+      { exchange: 'Bybit', long: 0, short: 0 },
+      { exchange: 'Okx', long: 0, short: 0 },
+      { exchange: 'Bitget', long: 0, short: 0 },
+      { exchange: 'Bitmex', long: 0, short: 0 },
+      { exchange: 'Hyperliquid', long: 0, short: 0 }
+    ];
 
-  const chartData1hour = useMemo(() => 
-    trend.map(item => ({
+    if (!trend || trend.length === 0) {
+      return defaultData;
+    }
+
+    // trend 데이터를 defaultData에 병합
+    return defaultData.map(defaultItem => {
+      const trendItem = trend.find(item => item.exchange === defaultItem.exchange);
+      return trendItem || defaultItem;
+    });
+  }, [trend]);
+
+  const chartData1hour = useMemo(() => {
+    // chartData5min을 기반으로 1시간 데이터 생성
+    return chartData5min.map(item => ({
       ...item,
-      exchange: item.exchange.startsWith('Hyperl') ? 'HL' : item.exchange,
       long: item.long * 12, // 1시간 = 12 x 5분 (시뮬레이션)
       short: item.short * 12
-    })), [trend]
-  );
+    }));
+  }, [chartData5min]);
+
+  // 디버깅: 차트 데이터 확인 (30초마다만 출력)
+  if (process.env.NODE_ENV === 'development') {
+    const now = Date.now();
+    if (!window.lastSidebarLog || (now - window.lastSidebarLog) > 30000) {
+      console.log('📊 SidebarLiquidations 데이터 업데이트:', {
+        trendCount: trend?.length,
+        chartData5minCount: chartData5min?.length,
+        chartData1hourCount: chartData1hour?.length,
+        sampleTrend: trend?.[0]
+      });
+      window.lastSidebarLog = now;
+    }
+  }
 
   return (
     <aside style={{ 
-      width: '280px', // 더 적절한 너비로 조정
-      padding: '15px', 
-      border: '1px solid #333', 
+      width: '300px',
+      padding: '0px', 
+      border: '1px solid rgb(51, 51, 51)', 
       borderRadius: '8px', 
-      backgroundColor: '#1a1a1a',
+      backgroundColor: 'rgb(26, 26, 26)',
       color: 'white',
-      margin: '0 auto',
-      minHeight: '300px'
+      margin: '-11px',
+      minHeight: '400px'
     }}>
       {/* 헤더 */}
-      <header className="mb-4">
+      <header className="mb-4 px-4 pt-4">
         <h2 className="font-semibold text-cyan-300 text-center">실시간 청산 데이터</h2>
         <p className="text-xs opacity-70 text-center mt-1">
           {lastUpdate ? `업데이트: ${lastUpdate.toLocaleTimeString('ko-KR')}` : '데이터 로딩 중...'}
@@ -43,22 +72,22 @@ const SidebarLiquidations = () => {
       
       {/* 에러 표시 */}
       {error && (
-        <div className="text-xs text-orange-400 mb-3 text-center">
+        <div className="text-xs text-orange-400 mb-3 text-center px-4">
           ⚠️ {error}
         </div>
       )}
 
       {/* 5분 차트 */}
-      <section className="mb-4">
-        <p className="mb-2 text-xs font-medium text-center text-zinc-300">
+      <section className="mb-4" style={{ paddingLeft: 0, paddingRight: 16 }}>
+        <p className="mb-2 text-xs font-medium text-center text-zinc-300" style={{ paddingLeft: 16 }}>
           5분 거래소별 청산 (M USD)
         </p>
-        <ResponsiveContainer width="100%" height={120}>
+        <ResponsiveContainer width="100%" height={160}>
           <BarChart
             data={chartData5min}
             layout="vertical"
-            barCategoryGap={6}
-            margin={{ top: 2, right: 15, left: 15, bottom: 2 }}
+            barCategoryGap={12}
+            margin={{ top: 8, right: 15, left: 0, bottom: 8 }}
           >
             <XAxis 
               type="number" 
@@ -68,10 +97,12 @@ const SidebarLiquidations = () => {
             <YAxis
               type="category"
               dataKey="exchange"
-              width={60}
-              tick={{ fontSize: 10, fill: '#ccc' }}
+              width={80}
+              interval={0}
+              tick={{ fontSize: 10, fill: '#fff' }}
               axisLine={false}
               tickLine={false}
+              tickFormatter={(value) => value}
             />
             <Tooltip 
               formatter={(value) => `${value.toFixed(2)}M`}
@@ -89,16 +120,16 @@ const SidebarLiquidations = () => {
       </section>
 
       {/* 1시간 차트 */}
-      <section>
-        <p className="mb-2 text-xs font-medium text-center text-zinc-300">
+      <section className="pb-4" style={{ paddingLeft: 0, paddingRight: 16 }}>
+        <p className="mb-2 text-xs font-medium text-center text-zinc-300" style={{ paddingLeft: 16 }}>
           1시간 거래소별 청산 (M USD)
         </p>
-        <ResponsiveContainer width="100%" height={120}>
+        <ResponsiveContainer width="100%" height={160}>
           <BarChart
             data={chartData1hour}
             layout="vertical"
-            barCategoryGap={6}
-            margin={{ top: 2, right: 15, left: 15, bottom: 2 }}
+            barCategoryGap={12}
+            margin={{ top: 8, right: 15, left: 0, bottom: 8 }}
           >
             <XAxis 
               type="number" 
@@ -108,10 +139,12 @@ const SidebarLiquidations = () => {
             <YAxis
               type="category"
               dataKey="exchange"
-              width={60}
-              tick={{ fontSize: 10, fill: '#ccc' }}
+              width={80}
+              interval={0}
+              tick={{ fontSize: 10, fill: '#fff' }}
               axisLine={false}
               tickLine={false}
+              tickFormatter={(value) => value}
             />
             <Tooltip 
               formatter={(value) => `${value.toFixed(2)}M`}
