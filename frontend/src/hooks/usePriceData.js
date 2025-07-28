@@ -19,6 +19,10 @@ const usePriceData = () => {
   const reconnectAttemptsRef = useRef(0);
   const dataRef = useRef([]);
   
+  useEffect(() => {
+    dataRef.current = data; // data 상태가 변경될 때 dataRef.current 업데이트
+  }, [data]);
+  
   // 중복 로그 방지용
   const lastLogTime = useRef({});
   
@@ -73,11 +77,16 @@ const usePriceData = () => {
   
   // 2. WebSocket 실시간 업데이트
   const connectWebSocket = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      console.log('⚠️ [usePriceData] WebSocket already connected');
-      return;
+    // 기존 WebSocket 연결이 있다면 정리
+    if (wsRef.current) {
+        wsRef.current.onopen = null;
+        wsRef.current.onmessage = null;
+        wsRef.current.onerror = null;
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+        wsRef.current = null;
     }
-    
+
     try {
       if (process.env.NODE_ENV === 'development') {
         logOnce('ws-connecting', '🔄 Connecting to WebSocket for real-time updates...', console.log, 15000);
@@ -109,26 +118,49 @@ const usePriceData = () => {
             if (process.env.NODE_ENV === 'development') {
               logOnce('realtime-update', `🔄 Real-time update: ${message.length} coins`, console.log, 60000);
               
-              // BTC 데이터 확인용 로그
-              const btcData = message.find(coin => coin.symbol === 'BTC');
-              if (btcData) {
-                console.log(`💰 [usePriceData] BTC 수신: ${btcData.upbit_price} KRW / ${btcData.binance_price} USD`);
+              // 실제 변화하는 코인들의 데이터 확인 (백엔드 로그에서 확인된 코인들)
+              const changingCoins = ['XRP', 'ENS', 'NEWT', 'SIGN', 'UNI'];
+              const changingData = message.filter(coin => changingCoins.includes(coin.symbol));
+              if (changingData.length > 0) {
+                changingData.forEach(coin => {
+                  console.log(`💰 [usePriceData] ${coin.symbol} 수신: Upbit=${coin.upbit_price} KRW, Binance=${coin.binance_price} USD`);
+                });
               }
             }
             
-            // 기존 데이터와 비교하여 실제 변경이 있는지 확인
-            const hasChanges = !dataRef.current.length || 
-              message.some((coin, index) => {
-                const oldCoin = dataRef.current[index];
-                return !oldCoin || coin.upbit_price !== oldCoin.upbit_price;
-              });
-            
+            // 1. 새로운 데이터를 Symbol을 키로 하는 Map으로 변환 (빠른 조회를 위해) - 현재 사용되지 않음
+            // const newMessageMap = new Map(message.map(coin => [coin.symbol, coin]));
+
+            // 2. 이전 데이터를 Map으로 변환
+            const oldDataMap = new Map(dataRef.current.map(coin => [coin.symbol, coin]));
+
+            // 3. 실제 변경 감지 로직 개선
+            const PRICE_CHANGE_THRESHOLD = 0.000001; // 가격 변화 감지 임계값 (예: 0.0001%)
+
+            const hasChanges = message.length !== dataRef.current.length || message.some(newCoin => {
+              const oldCoin = oldDataMap.get(newCoin.symbol);
+              if (!oldCoin) return true; // 새로운 코인인 경우
+
+              // 가격 변화를 임계값 기준으로 감지
+              const upbitPriceChanged = newCoin.upbit_price !== null && oldCoin.upbit_price !== null && Math.abs(newCoin.upbit_price - oldCoin.upbit_price) > (oldCoin.upbit_price * PRICE_CHANGE_THRESHOLD || 0.000001); // 0으로 나누는 것 방지
+              const binancePriceChanged = newCoin.binance_price !== null && oldCoin.binance_price !== null && Math.abs(newCoin.binance_price - oldCoin.binance_price) > (oldCoin.binance_price * PRICE_CHANGE_THRESHOLD || 0.000001);
+              const bybitPriceChanged = newCoin.bybit_price !== null && oldCoin.bybit_price !== null && Math.abs(newCoin.bybit_price - oldCoin.bybit_price) > (oldCoin.bybit_price * PRICE_CHANGE_THRESHOLD || 0.000001);
+
+              return upbitPriceChanged || binancePriceChanged || bybitPriceChanged;
+            });
+
             if (hasChanges) {
               if (process.env.NODE_ENV === 'development') {
                 logOnce('data-changed', '✨ Data has changed, updating UI', console.log, 60000);
+                
+                // 1단계 디버깅: setState 직후 새 데이터 확인
+                const xrpData = message.find(coin => coin.symbol === 'XRP');
+                if (xrpData) {
+                  console.log(`🔍 [usePriceData 1단계] XRP setState 직후: upbit_price=${xrpData.upbit_price}, 배열길이=${message.length}`);
+                }
               }
               setData([...message]); // 새 배열 참조로 강제 리렌더링
-              dataRef.current = message;
+              // dataRef.current는 setData가 완료된 후에 업데이트
               setLastUpdate(new Date());
               setError(null);
             }
@@ -150,19 +182,13 @@ const usePriceData = () => {
         }
         setConnectionStatus('disconnected');
         
-        // 자동 재연결 (최대 10회)
-        if (reconnectAttemptsRef.current < 10) {
-          reconnectAttemptsRef.current++;
-          if (process.env.NODE_ENV === 'development') {
-            logOnce(`ws-reconnect-${reconnectAttemptsRef.current}`, `Reconnecting WebSocket... (${reconnectAttemptsRef.current}/10)`, console.log, 3000);
-          }
-          setTimeout(connectWebSocket, 3000);
-        } else {
-          console.error('Max WebSocket reconnect attempts reached');
-          setConnectionStatus('failed');
+        // 자동 재연결 (무한)
+        reconnectAttemptsRef.current++;
+        if (process.env.NODE_ENV === 'development') {
+            logOnce(`ws-reconnect-${reconnectAttemptsRef.current}`, `Reconnecting WebSocket... (attempt ${reconnectAttemptsRef.current})`, console.log, 3000);
         }
+        setTimeout(connectWebSocket, 3000);
       };
-      
     } catch (err) {
       console.error('WebSocket connection failed:', err);
       setConnectionStatus('error');

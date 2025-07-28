@@ -1,0 +1,248 @@
+💰 [usePriceData] UNI 수신: Upbit=14430 KRW, Binance=10.536 USD bundle.js:38213:27
+💰 [usePriceData] XRP 수신: Upbit=4320 KRW, Binance=3.1522 USD bundle.js:38213:27
+💰 [usePriceData] ENS 수신: Upbit=39840 KRW, Binance=29.03 USD bundle.js:38213:27
+💰 [usePriceData] SIGN 수신: Upbit=109.6 KRW, Binance=0.07993 USD bundle.js:38213:27
+🔍 [usePriceData 1단계] XRP setState 직후: upbit_price=4320, 배열길이=556 bundle.js:38244:27
+🔍 [App.js] XRP 데이터 받음: upbit_price=4320, 배열길이=556 2 bundle.js:37534:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=556 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=556 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+청산 데이터 WebSocket 연결 해제됨 src_components_SidebarLiquidations_js.chunk.js:431:10
+🔌 WebSocket disconnected: 1001 - bundle.js:38134:10
+Reconnecting WebSocket... (attempt 1) bundle.js:38134:10
+🔍 [App.js] XRP 데이터 받음: upbit_price=4320, 배열길이=556 2 bundle.js:37534:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=556 2 src_components_CoinTable_js.chunk.js:447:13
+Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools bundle.js:29530:21
+🚀 Loading initial data via REST API... bundle.js:38134:10
+✅ Initial data loaded: 183 coins bundle.js:38134:10
+📊 Sample coin: {"symbol":"WAXP","upbit_price":31.2,"upbit_volume":1061538290.6961397,"upbit_change_percent":-1.9176359600000001,"binance_price":0.02279,"binance_volume":793794945.186865,"binance_volume_usd":579200.98153,"binance_change_percent":-1.171,"bybit_price":null,"bybit_volume":null,"bybit_volume_usd":null,"bybit_change_percent":null,"premium":-1.46,"exchange_rate":1389.3,"usdt_krw_rate":1370.5} bundle.js:38134:10
+🔄 Connecting to WebSocket for real-time updates... bundle.js:38134:10
+🔍 [App.js] XRP 데이터 받음: upbit_price=4320, 배열길이=183 2 bundle.js:37534:13
+✅ WebSocket connected for real-time updates bundle.js:38134:10
+🔍 [App.js] XRP 데이터 받음: upbit_price=4320, 배열길이=183 bundle.js:37534:13
+🔍 [App.js] XRP 데이터 받음: upbit_price=4320, 배열길이=183 bundle.js:37534:13
+🔍 [App.js] XRP 데이터 받음: upbit_price=4320, 배열길이=183 2 bundle.js:37534:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=183 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=183 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+한글 코인명 캐시 로드 2 src_components_CoinTable_js.chunk.js:524:21
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=183 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=183 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+Warning: validateDOMNesting(...): <td> cannot appear as a child of <span>.
+td
+PriceCell@http://localhost:3000/static/js/src_components_CoinTable_js.chunk.js:1246:19
+span
+div
+div
+CoinRow@http://localhost:3000/static/js/src_components_CoinTable_js.chunk.js:251:17
+div
+div
+div
+CoinTable@http://localhost:3000/static/js/src_components_CoinTable_js.chunk.js:430:19
+Suspense
+section
+div
+div
+main
+div
+div
+App@http://localhost:3000/static/js/bundle.js:37518:114 bundle.js:3843:34
+[PriceCell] ₩ 가격 변화 감지: 4320 -> 4320 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 3.1522 -> 3.1522 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 725.3 -> 725.3 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.5278 -> 0.5278 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 5200000 -> 5200000 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 3795.9 -> 3795.9 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 710.6 -> 710.6 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.5181 -> 0.5181 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 1082 -> 1082 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.79 -> 0.79 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 161780000 -> 161780000 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 118027.53 -> 118027.53 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 317.2 -> 317.2 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.23128 -> 0.23128 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 900.7 -> 900.7 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.657 -> 0.657 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 255500 -> 255500 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 186.31 -> 186.31 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 51.46 -> 51.46 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.03755 -> 0.03755 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 0.04649 -> 0.04649 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.00003387 -> 0.00003387 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 55.87 -> 55.87 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.040745 -> 0.040745 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 5535 -> 5535 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 4.0374 -> 4.0374 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 398.4 -> 398.4 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.2909 -> 0.2909 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 39840 -> 39840 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 29.03 -> 29.03 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 1101 -> 1101 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.8024 -> 0.8024 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 372 -> 372 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.27154 -> 0.27154 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 579.8 -> 579.8 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.4226 -> 0.4226 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 1380 -> 1380 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 1.0062 -> 1.0062 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 1796 -> 1796 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 1.3095 -> 1.3095 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 4320 -> 4320 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 3.1522 -> 3.1522 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 725.3 -> 725.3 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.5278 -> 0.5278 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 5200000 -> 5200000 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 3795.9 -> 3795.9 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 710.6 -> 710.6 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.5181 -> 0.5181 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 1082 -> 1082 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.79 -> 0.79 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 161780000 -> 161780000 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 118027.53 -> 118027.53 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 317.2 -> 317.2 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.23128 -> 0.23128 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 900.7 -> 900.7 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.657 -> 0.657 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 255500 -> 255500 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 186.31 -> 186.31 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 51.46 -> 51.46 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.03755 -> 0.03755 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 0.04649 -> 0.04649 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.00003387 -> 0.00003387 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 55.87 -> 55.87 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.040745 -> 0.040745 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 5535 -> 5535 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 4.0374 -> 4.0374 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 398.4 -> 398.4 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.2909 -> 0.2909 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 39840 -> 39840 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 29.03 -> 29.03 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 1101 -> 1101 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.8024 -> 0.8024 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 372 -> 372 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.27154 -> 0.27154 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 579.8 -> 579.8 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 0.4226 -> 0.4226 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 1380 -> 1380 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 1.0062 -> 1.0062 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] ₩ 가격 변화 감지: 1796 -> 1796 src_components_CoinTable_js.chunk.js:1257:13
+[PriceCell] $ 가격 변화 감지: 1.3095 -> 1.3095 src_components_CoinTable_js.chunk.js:1257:13
+📊 SidebarLiquidations 데이터 업데이트: 
+Object { trendCount: 0, chartData5minCount: 6, chartData1hourCount: 6, sampleTrend: undefined }
+src_components_SidebarLiquidations_js.chunk.js:93:15
+Firefox가 ws://localhost:8000/ws/liquidations 서버에 연결할 수 없습니다. src_components_SidebarLiquidations_js.chunk.js:640:18
+페이지 로드 중 ws://localhost:8000/ws/liquidations에 대한 연결이 중단되었습니다. src_components_SidebarLiquidations_js.chunk.js:640:18
+청산 데이터 WebSocket 오류: 
+error { target: WebSocket, isTrusted: true, srcElement: WebSocket, currentTarget: WebSocket, eventPhase: 2, bubbles: false, cancelable: false, returnValue: true, defaultPrevented: false, composed: false, … }
+src_components_SidebarLiquidations_js.chunk.js:689:17
+청산 데이터 WebSocket 연결 해제됨 src_components_SidebarLiquidations_js.chunk.js:431:10
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=183 2 src_components_CoinTable_js.chunk.js:447:13
+🔄 Real-time update: 556 coins bundle.js:38134:10
+💰 [usePriceData] NEWT 수신: Upbit=542.5 KRW, Binance=0.3952 USD bundle.js:38213:27
+💰 [usePriceData] UNI 수신: Upbit=14430 KRW, Binance=10.536 USD bundle.js:38213:27
+💰 [usePriceData] XRP 수신: Upbit=4320 KRW, Binance=3.1523 USD bundle.js:38213:27
+💰 [usePriceData] ENS 수신: Upbit=39840 KRW, Binance=29.03 USD bundle.js:38213:27
+💰 [usePriceData] SIGN 수신: Upbit=109.6 KRW, Binance=0.07993 USD bundle.js:38213:27
+✨ Data has changed, updating UI bundle.js:38134:10
+🔍 [usePriceData 1단계] XRP setState 직후: upbit_price=4320, 배열길이=556 bundle.js:38244:27
+🔍 [App.js] XRP 데이터 받음: upbit_price=4320, 배열길이=556 2 bundle.js:37534:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=556 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=556 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+청산 데이터 WebSocket 연결됨 src_components_SidebarLiquidations_js.chunk.js:431:10
+💰 [usePriceData] NEWT 수신: Upbit=542.5 KRW, Binance=0.3952 USD bundle.js:38213:27
+💰 [usePriceData] UNI 수신: Upbit=14430 KRW, Binance=10.54 USD bundle.js:38213:27
+💰 [usePriceData] XRP 수신: Upbit=4320 KRW, Binance=3.1529 USD bundle.js:38213:27
+💰 [usePriceData] ENS 수신: Upbit=39840 KRW, Binance=29.04 USD bundle.js:38213:27
+💰 [usePriceData] SIGN 수신: Upbit=109.6 KRW, Binance=0.07993 USD bundle.js:38213:27
+🔍 [usePriceData 1단계] XRP setState 직후: upbit_price=4320, 배열길이=556 bundle.js:38244:27
+🔍 [App.js] XRP 데이터 받음: upbit_price=4320, 배열길이=556 2 bundle.js:37534:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=556 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=556 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+💰 [usePriceData] NEWT 수신: Upbit=542.5 KRW, Binance=0.3952 USD bundle.js:38213:27
+💰 [usePriceData] UNI 수신: Upbit=14430 KRW, Binance=10.54 USD bundle.js:38213:27
+💰 [usePriceData] XRP 수신: Upbit=4320 KRW, Binance=3.153 USD bundle.js:38213:27
+💰 [usePriceData] ENS 수신: Upbit=39840 KRW, Binance=29.04 USD bundle.js:38213:27
+💰 [usePriceData] SIGN 수신: Upbit=109.6 KRW, Binance=0.07993 USD bundle.js:38213:27
+🔍 [usePriceData 1단계] XRP setState 직후: upbit_price=4320, 배열길이=556 bundle.js:38244:27
+🔍 [App.js] XRP 데이터 받음: upbit_price=4320, 배열길이=556 2 bundle.js:37534:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=556 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=556 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+💰 [usePriceData] NEWT 수신: Upbit=542.5 KRW, Binance=0.3955 USD bundle.js:38213:27
+💰 [usePriceData] UNI 수신: Upbit=14430 KRW, Binance=10.54 USD bundle.js:38213:27
+💰 [usePriceData] XRP 수신: Upbit=4320 KRW, Binance=3.1531 USD bundle.js:38213:27
+💰 [usePriceData] ENS 수신: Upbit=39840 KRW, Binance=29.04 USD bundle.js:38213:27
+💰 [usePriceData] SIGN 수신: Upbit=109.6 KRW, Binance=0.07993 USD bundle.js:38213:27
+🔍 [usePriceData 1단계] XRP setState 직후: upbit_price=4320, 배열길이=556 bundle.js:38244:27
+🔍 [App.js] XRP 데이터 받음: upbit_price=4320, 배열길이=556 2 bundle.js:37534:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=556 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4320, 배열길이=556 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4320 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4320 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4320 src_components_CoinTable_js.chunk.js:590:17
+💰 [usePriceData] NEWT 수신: Upbit=542.5 KRW, Binance=0.3955 USD bundle.js:38213:27
+💰 [usePriceData] UNI 수신: Upbit=14430 KRW, Binance=10.543 USD bundle.js:38213:27
+💰 [usePriceData] XRP 수신: Upbit=4321 KRW, Binance=3.1534 USD bundle.js:38213:27
+💰 [usePriceData] ENS 수신: Upbit=39840 KRW, Binance=29.04 USD bundle.js:38213:27
+💰 [usePriceData] SIGN 수신: Upbit=109.6 KRW, Binance=0.07993 USD bundle.js:38213:27
+🔍 [usePriceData 1단계] XRP setState 직후: upbit_price=4321, 배열길이=556 bundle.js:38244:27
+🔍 [App.js] XRP 데이터 받음: upbit_price=4321, 배열길이=556 2 bundle.js:37534:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4321, 배열길이=556 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4321 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4321 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4321 src_components_CoinTable_js.chunk.js:590:17
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4321, 배열길이=556 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4321 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4321 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4321 src_components_CoinTable_js.chunk.js:590:17
+💰 [usePriceData] NEWT 수신: Upbit=542.5 KRW, Binance=0.3953 USD bundle.js:38213:27
+💰 [usePriceData] UNI 수신: Upbit=14430 KRW, Binance=10.543 USD bundle.js:38213:27
+💰 [usePriceData] XRP 수신: Upbit=4321 KRW, Binance=3.1532 USD bundle.js:38213:27
+💰 [usePriceData] ENS 수신: Upbit=39840 KRW, Binance=29.05 USD bundle.js:38213:27
+💰 [usePriceData] SIGN 수신: Upbit=109.6 KRW, Binance=0.07993 USD bundle.js:38213:27
+🔍 [usePriceData 1단계] XRP setState 직후: upbit_price=4321, 배열길이=557 bundle.js:38244:27
+🔍 [App.js] XRP 데이터 받음: upbit_price=4321, 배열길이=557 2 bundle.js:37534:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4321, 배열길이=557 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4321 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4321 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4321 src_components_CoinTable_js.chunk.js:590:17
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4321, 배열길이=557 src_components_CoinTable_js.chunk.js:447:13
+🔍 [CoinTable] XRP 원본 데이터: upbit_price=4321 (타입: number) src_components_CoinTable_js.chunk.js:588:17
+🔍 [CoinTable] XRP 계산된 domestic: 4321 (타입: number) src_components_CoinTable_js.chunk.js:589:17
+🔍 [CoinTable] XRP 계산 과정: upbit_price = 4321 src_components_CoinTable_js.chunk.js:590:17

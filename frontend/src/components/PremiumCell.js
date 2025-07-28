@@ -8,8 +8,7 @@ const PremiumCell = ({ premium }) => {
   const prevPremiumRef = useRef(null);
   const animationTimeoutRef = useRef(null);
   
-  // 컴포넌트 호출 추적
-  console.log(`🔍 [PremiumCell] 컴포넌트 호출됨: premium=${premium}`);
+  // 컴포넌트 호출 추적 제거 (너무 많은 로그)
   
   // 프리미엄 색상 결정 함수
   const getPremiumColor = useCallback((premiumValue) => {
@@ -24,12 +23,10 @@ const PremiumCell = ({ premium }) => {
     const currentPremium = premium;
     const prevPremium = prevPremiumRef.current;
     
-    // 디버그: 모든 렌더링 추적
-    console.log(`🔍 [PremiumCell] 렌더링: premium=${currentPremium}, prev=${prevPremium}`);
+    // 렌더링 로그 제거 (스팸 방지)
     
     // 첫 번째 렌더링이거나 프리미엄이 null인 경우
     if (prevPremium === null || currentPremium === null) {
-      console.log(`🔍 [PremiumCell] 초기 설정: ${currentPremium}`);
       prevPremiumRef.current = currentPremium;
       spanRef.current.textContent = currentPremium !== null ? `${currentPremium > 0 ? '+' : ''}${currentPremium.toFixed(2)}%` : 'N/A';
       // 초기 색상 설정

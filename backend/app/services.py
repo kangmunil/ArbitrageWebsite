@@ -25,76 +25,83 @@ shared_data = {
 
 # --- WebSocket Clients ---
 
+from .enhanced_websocket import EnhancedWebSocketClient # Add this import
+
 async def upbit_websocket_client():
     """
     Upbit WebSocket에 연결하여 모든 KRW 마켓의 실시간 시세를 수신하고
-    shared_data를 업데이트합니다.
+    shared_data를 업데이트합니다. EnhancedWebSocketClient 사용.
     """
     uri = "wss://api.upbit.com/websocket/v1"
-    while True:
+    client = EnhancedWebSocketClient(uri=uri, name="Upbit", ping_interval=20, ping_timeout=10)
+
+    async def on_connect():
+        logger.info("Upbit WebSocket에 연결되었습니다.")
+        krw_markets = get_upbit_krw_markets()
+        if not krw_markets:
+            logger.error("Upbit KRW 마켓 목록을 가져올 수 없습니다. 재시도합니다.")
+            # Consider raising an exception or handling this more robustly if markets are critical
+            return
+
+        subscribe_message = [
+            {"ticket": str(uuid.uuid4())},
+            {"type": "ticker", "codes": [f"KRW-{symbol}" for symbol in krw_markets]}
+        ]
+        await client.websocket.send(json.dumps(subscribe_message))
+        logger.info(f"Upbit WebSocket에 {len(krw_markets)}개 마켓을 구독했습니다.")
+
+    async def on_message(data):
         try:
-            async with websockets_connect(uri) as websocket:
-                logger.info("Upbit WebSocket에 연결되었습니다.")
-                
-                # 구독할 KRW 마켓 목록 가져오기
-                krw_markets = get_upbit_krw_markets()
-                if not krw_markets:
-                    logger.error("Upbit KRW 마켓 목록을 가져올 수 없습니다. 5초 후 재시도합니다.")
-                    await asyncio.sleep(5)
-                    continue
+            # EnhancedWebSocketClient handles JSON parsing, so 'data' is already a dict/list
+            symbol = data['code'].replace('KRW-', '')
+            
+            shared_data["upbit_tickers"][symbol] = {
+                "price": data['trade_price'],
+                "volume": data['acc_trade_price_24h'],  # 거래대금 (KRW) 사용
+                "change_percent": data['signed_change_rate'] * 100
+            }
+            if symbol == 'BTC':
+                logger.info(f"📈 Upbit BTC 실시간 수신: {data['trade_price']:.1f} KRW (정확한 값: {data['trade_price']})")
+            if symbol == 'AMO': # AMO 코인 데이터 수신 시 로그 추가
+                logger.info(f"🔍 Upbit AMO 수신: {data}")
+        except Exception as parse_error:
+            logger.error(f"Upbit 메시지 처리 오류: {parse_error}, 메시지: {data}")
 
-                # 구독 메시지 생성
-                subscribe_message = [
-                    {"ticket": str(uuid.uuid4())},
-                    {"type": "ticker", "codes": [f"KRW-{symbol}" for symbol in krw_markets]}
-                ]
-                await websocket.send(json.dumps(subscribe_message))
-                logger.info(f"Upbit WebSocket에 {len(krw_markets)}개 마켓을 구독했습니다.")
-
-                # 데이터 수신 및 처리
-                async for message in websocket:
-                    try:
-                        data = json.loads(message)
-                        symbol = data['code'].replace('KRW-', '')
-                        
-                        shared_data["upbit_tickers"][symbol] = {
-                            "price": data['trade_price'],
-                            "volume": data['acc_trade_price_24h'],  # 거래대금 (KRW) 사용
-                            "change_percent": data['signed_change_rate'] * 100
-                        }
-                        # logger.debug(f"Upbit 수신: {symbol} = {data['trade_price']}")
-                    except Exception as parse_error:
-                        logger.error(f"Upbit 메시지 파싱 오류: {parse_error}, 메시지: {message[:200]}")
-
-        except Exception as e:
-            logger.error(f"Upbit WebSocket 오류: {e}. 5초 후 재연결합니다.")
-            await asyncio.sleep(5)
+    client.on_connect = on_connect
+    client.on_message = on_message
+    await client.run_with_retry()
 
 async def binance_websocket_client():
     """
     Binance WebSocket에 연결하여 모든 USDT 페어의 24시간 티커 정보를 수신하고
-    shared_data를 업데이트합니다.
+    shared_data를 업데이트합니다. EnhancedWebSocketClient 사용.
     """
     uri = "wss://stream.binance.com:9443/ws/!ticker@arr"
-    while True:
+    client = EnhancedWebSocketClient(uri=uri, name="Binance", ping_interval=20, ping_timeout=10)
+
+    async def on_connect():
+        logger.info("Binance WebSocket에 연결되었습니다.")
+        # Binance All Ticker Stream doesn't require a subscription message after connection
+
+    async def on_message(data):
         try:
-            async with websockets_connect(uri) as websocket:
-                logger.info("Binance WebSocket에 연결되었습니다.")
-                async for message in websocket:
-                    data = json.loads(message)
-                    for ticker in data:
-                        if ticker['s'].endswith('USDT'):
-                            symbol = ticker['s'].replace('USDT', '')
-                            shared_data["binance_tickers"][symbol] = {
-                                "price": float(ticker['c']),
-                                "volume": float(ticker['q']),  # q = quote asset volume (USDT 거래대금)
-                                "change_percent": float(ticker['P'])
-                            }
-                            # logger.debug(f"Binance 수신: {symbol} = {ticker['c']}")
-                            # logger.debug(f"Binance 수신: {symbol} = {ticker['c']}")
-        except Exception as e:
-            logger.error(f"Binance WebSocket 오류: {e}. 5초 후 재연결합니다.")
-            await asyncio.sleep(5)
+            # EnhancedWebSocketClient handles JSON parsing, so 'data' is already a dict/list
+            for ticker in data:
+                if ticker['s'].endswith('USDT'):
+                    symbol = ticker['s'].replace('USDT', '')
+                    shared_data["binance_tickers"][symbol] = {
+                        "price": float(ticker['c']),
+                        "volume": float(ticker['q']),  # q = quote asset volume (USDT 거래대금)
+                        "change_percent": float(ticker['P'])
+                    }
+                    if symbol == 'BTC':
+                        logger.info(f"📊 Binance BTC 실시간 수신: {ticker['c']} USDT")
+        except Exception as parse_error:
+            logger.error(f"Binance 메시지 처리 오류: {parse_error}, 메시지: {data}")
+
+    client.on_connect = on_connect
+    client.on_message = on_message
+    await client.run_with_retry()
 
 async def bybit_websocket_client():
     """

@@ -1,87 +1,53 @@
-import { useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import './PriceCell.css';
 
-/**
- * 가격 변화를 시각적으로 표시하는 셀 컴포넌트 (직접 DOM 조작 방식)
- */
-const PriceCell = ({ price, currency = '₩', formatPrice }) => {
-  const spanRef = useRef(null);
-  const prevPriceRef = useRef(null);
-  const animationTimeoutRef = useRef(null);
-  
+// Helper to format the price
+const formatPrice = (price) => {
+  if (price === null || price === undefined || isNaN(price)) {
+    return '-';
+  }
+  const options = {
+    maximumFractionDigits: price < 10 ? 4 : (price < 100 ? 2 : 0),
+  };
+  return price.toLocaleString('en-US', options);
+};
+
+const PriceCell = ({ price, currency }) => {
+  // State to manage the animation CSS class
+  const [animationClass, setAnimationClass] = useState('');
+  // Ref to store the previous price to detect changes
+  const prevPriceRef = useRef(price); // Initialize with current price
+
   useEffect(() => {
-    if (!spanRef.current) return;
-    
-    const currentPrice = price;
-    const prevPrice = prevPriceRef.current;
-    
-    // 디버그: 모든 렌더링 추적
-    console.log(`🔍 [PriceCell] 렌더링: price=${currentPrice}, prev=${prevPrice}, currency=${currency}`);
-    
-    // 첫 번째 렌더링이거나 가격이 null인 경우
-    if (prevPrice === null || currentPrice === null) {
-      console.log(`🔍 [PriceCell] 초기 설정: ${currentPrice} ${currency}`);
-      prevPriceRef.current = currentPrice;
-      spanRef.current.textContent = currentPrice ? formatPrice(currentPrice, currency) : 'N/A';
-      return;
+    console.log(`[PriceCell] ${currency} 가격 변화 감지: ${prevPriceRef.current} -> ${price}`); // 디버깅 로그 추가
+    // Only run if price has actually changed
+    if (price !== prevPriceRef.current) {
+      // Determine animation direction
+      const animation = price > prevPriceRef.current ? 'price-up' : 'price-down';
+      setAnimationClass(animation);
+
+      // After the animation duration, remove the class so it can be re-triggered
+      const timer = setTimeout(() => {
+        setAnimationClass('');
+      }, 300); // This duration must match the CSS animation duration
+
+      // Update the ref with the new price for the next render cycle
+      prevPriceRef.current = price; // Update ref for next comparison
+
+      // Cleanup timer on component unmount or if effect re-runs
+      return () => clearTimeout(timer);
     }
-    
-    // 가격 변화가 있는 경우
-    if (prevPrice !== currentPrice) {
-      const change = currentPrice > prevPrice ? 'up' : 'down';
-      
-      console.log(`💰 [PriceCell] ${currency === '₩' ? '국내' : '해외'} 가격 변화: ${prevPrice} → ${currentPrice} (${change === 'up' ? '상승' : '하락'})`);
-      
-      // 즉시 DOM 업데이트
-      spanRef.current.textContent = formatPrice(currentPrice, currency);
-      
-      // 기존 애니메이션 클래스 제거
-      spanRef.current.className = 'price-cell transition-all duration-300 ease-in-out px-2 py-1 rounded-md';
-      
-      // 애니메이션 클래스 추가
-      const flashClass = change === 'up' 
-        ? 'price-cell-flash-up bg-green-400/60 border-2 border-green-300 shadow-xl shadow-green-400/50 scale-105 text-white font-bold'
-        : 'price-cell-flash-down bg-red-400/60 border-2 border-red-300 shadow-xl shadow-red-400/50 scale-105 text-white font-bold';
-      
-      setTimeout(() => {
-        spanRef.current.className = `price-cell transition-all duration-300 ease-in-out px-2 py-1 rounded-md ${flashClass}`;
-      }, 10);
-      
-      // 기존 타이머 클리어
-      if (animationTimeoutRef.current) {
-        clearTimeout(animationTimeoutRef.current);
-      }
-      
-      // 1.5초 후 원래 상태로 복구
-      animationTimeoutRef.current = setTimeout(() => {
-        if (spanRef.current) {
-          spanRef.current.className = 'price-cell transition-all duration-300 ease-in-out px-2 py-1 rounded-md';
-        }
-      }, 1500);
-      
-      prevPriceRef.current = currentPrice;
-    } else {
-      // 가격 변화가 없어도 텍스트 업데이트
-      spanRef.current.textContent = formatPrice(currentPrice, currency);
-    }
-  }, [price, currency, formatPrice]);
-  
-  // 컴포넌트 언마운트 시 타이머 정리
-  useEffect(() => {
-    return () => {
-      if (animationTimeoutRef.current) {
-        clearTimeout(animationTimeoutRef.current);
-      }
-    };
-  }, []);
-  
+  }, [price]); // Dependency on 'price' prop
+
+  // Render the current 'price' prop directly, and apply animation class
   return (
-    <span 
-      ref={spanRef}
-      className="price-cell transition-all duration-300 ease-in-out px-2 py-1 rounded-md"
-    >
-      {price ? formatPrice(price, currency) : 'N/A'}
-    </span>
+    <td className={`price-cell ${animationClass}`}>
+      <span className="currency">{currency}</span>
+      {/* Step 8 (part 2): The new price is displayed on screen directly from the prop */}
+      <span className="price">{formatPrice(price)}</span> {/* Directly use 'price' prop */}
+    </td>
   );
 };
 
+// Removed React.memo temporarily for debugging, can add back later if it works
 export default PriceCell;

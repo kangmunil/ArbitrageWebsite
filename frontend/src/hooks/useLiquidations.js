@@ -132,7 +132,7 @@ export const useLiquidations = (windowMin = 5) => {
     // 디버깅 로그 제거
     
     return result;
-  }, [normalizeLiquidationData, logOnce]);
+  }, [normalizeLiquidationData]);
 
   // 거래소별 트렌드 데이터 생성 (5분 누적)
   const generateTrendByExchange = useCallback((summaryData) => {

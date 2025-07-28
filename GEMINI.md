@@ -19,6 +19,7 @@ Orchestrates the various services:
 *   `coinprice_service`: A separate service responsible for fetching raw coin data from various exchanges.
 *   `liquidation_service`: A separate service responsible for fetching liquidation data.
 *   `db`: The MySQL database.
+*   **Enhancements**: `backend` service now includes a `healthcheck` to ensure it's ready before `frontend` starts. `frontend`'s `depends_on` condition was updated to `service_healthy` for robust startup order. `backend` service's port mapping was explicitly set to `0.0.0.0:8000:8000` to ensure accessibility from all network interfaces.
 
 ### 2. Backend (`backend/`)
 
@@ -34,6 +35,7 @@ Orchestrates the various services:
     *   Reads real-time ticker data and exchange rates from `services.shared_data`.
     *   Processes the data, including calculating kimchi premium and converting Binance/Bybit volumes to KRW equivalent.
     *   Broadcasts the aggregated coin data to all connected WebSocket clients via `/ws/prices`.
+    *   **Enhancements**: Added debug logging to monitor data broadcast just before sending to clients.
 
 #### Backend Endpoints
 
@@ -51,8 +53,8 @@ Orchestrates the various services:
 #### `backend/app/services.py`
 *   **`shared_data`:** A global dictionary acting as a central store for all real-time data collected from various sources (Upbit, Binance, Bybit tickers, exchange rates).
 *   **WebSocket Client Functions:**
-    *   `upbit_websocket_client()`: Connects to Upbit WebSocket, subscribes to KRW markets, and updates `shared_data['upbit_tickers']`.
-    *   `binance_websocket_client()`: Connects to Binance WebSocket, subscribes to USDT pairs, and updates `shared_data['binance_tickers']`.
+    *   `upbit_websocket_client()`: **Refactored to use `EnhancedWebSocketClient`** for robust connection management, subscribes to KRW markets, and updates `shared_data['upbit_tickers']`.
+    *   `binance_websocket_client()`: **Refactored to use `EnhancedWebSocketClient`** for robust connection management, subscribes to USDT pairs, and updates `shared_data['binance_tickers']`.
     *   `bybit_websocket_client()`: Connects to Bybit WebSocket, subscribes to USDT pairs, and updates `shared_data['bybit_tickers']`.
 *   **Periodic Data Fetching Functions:**
     *   `fetch_exchange_rate_periodically()`: Fetches USD/KRW exchange rate from Naver Finance.
@@ -70,6 +72,7 @@ Orchestrates the various services:
 *   **Enhanced WebSocket Client Management:** Defines the `EnhancedWebSocketClient` class for robust WebSocket client connections.
 *   **Features:** Includes exponential backoff for reconnection, error handling, connection state monitoring, and callback mechanisms for various events.
 *   **Purpose:** Provides a reusable and resilient WebSocket client implementation for various data collection services.
+*   **Enhancements**: `__init__` method now accepts and stores `ping_interval` and `ping_timeout` parameters. The `run_with_retry` method was modified to attempt **infinite reconnections** (removed `max_retries` limit).
 
 ### Database Models and Schemas
 
@@ -114,6 +117,7 @@ Defines Pydantic schemas for data validation and serialization, used for FastAPI
 *   **UI Features:** Provides dropdowns for domestic/global exchange selection, a search input, sortable table columns, and a "Show More" button.
 *   **Performance Optimization:** Extensively uses `memo`, `useMemo`, `useCallback`, debouncing, and caching to minimize re-renders and optimize performance.
 *   **Styling:** Uses Tailwind CSS classes and `CoinTable.css` for layout and appearance.
+*   **Enhancements**: Ensures stable `key` props for `CoinRow` components.
 
 #### `frontend/src/components/Header.js`
 *   Displays the website header with logo and navigation.
@@ -146,6 +150,7 @@ Defines Pydantic schemas for data validation and serialization, used for FastAPI
 *   **Error Handling & Reconnection:** Implements automatic reconnection logic for WebSockets with exponential backoff and handles REST API fetch errors.
 *   **Performance Optimization:** Uses `useCallback`, `useMemo`, and `useRef` for memoization, efficient data comparison (`dataRef`), and controlled logging (`logOnce`) to prevent unnecessary re-renders and console spam.
 *   **Lifecycle Management:** Handles initial data loading and WebSocket connection setup on component mount, and ensures proper cleanup on unmount.
+*   **Enhancements**: `connectWebSocket` now explicitly cleans up previous WebSocket event listeners and closes old connections before establishing a new one. `PRICE_CHANGE_THRESHOLD` was introduced in `hasChanges` logic for more accurate price change detection, mitigating floating-point comparison issues. `dataRef.current` updates are now synchronized with `data` state changes via a dedicated `useEffect`.
 
 #### `frontend/src/App.css`
 *   Contains global CSS styles for the application layout and general elements.
@@ -154,18 +159,23 @@ Defines Pydantic schemas for data validation and serialization, used for FastAPI
 #### `frontend/src/components/CoinTable.css`
 *   Contains specific CSS rules for the `CoinTable` component, such as padding for select elements and background color.
 
+#### `frontend/src/components/PriceCell.css`
+*   **New File**: Contains specific CSS rules for the `PriceCell` component, defining price change animation styles.
+
 ## Current Status and Recent Changes
-*   **Backend Volume Conversion:** `backend/app/main.py` was modified to convert Binance and Bybit volumes to KRW equivalent before broadcasting to the frontend.
-*   **Frontend Volume Formatting:** `frontend/src/components/CoinTable.js` was updated to display KRW volume in "백만 원" units and USD volume in "K $" units, both without decimals.
-*   **Frontend Layout/Styling:**
-    *   `CoinTable.js`: Dropdown and search input alignment, font size adjustments.
-    *   `CoinTable.css`: Added for `CoinTable` specific styles.
-    *   `App.js`: Added a max-width wrapper (`mx-auto max-w-screen-2xl`) for the main content.
-    *   `App.css`: `App-section` updated to use flexbox for better internal layout.
-    *   `SidebarLiquidations.js`: Adjusted styling for centering and consistent background color.
-*   **Frontend JSX Error:** The previous JSX syntax error in `CoinTable.js` has been fixed by the user.
-*   **WebSocket Connection Fixes:** Updated `websockets` connection syntax from `websockets.connect` to `websockets.client.connect` in `backend/app/enhanced_websocket.py`, `backend/app/liquidation_services.py`, and `backend/app/services.py` to align with `websockets` library version 10.0+.
-*   **Binance BTCUSDT Liquidation Filtering:** Implemented filtering in `backend/liquidation_service/liquidation_collector.py` to process only 'BTCUSDT' liquidation data from Binance.
+*   **Frontend Rendering & Data Flow Improvements**:
+    *   `PriceCell.js` refactored for purely declarative, state-based rendering and animation, removing direct DOM manipulation. A dedicated `PriceCell.css` was introduced for styling.
+    *   `CoinTable.js` ensures stable `key` props for `CoinRow` components and uses `useMemo` for optimized data processing.
+    *   `usePriceData.js` now includes robust WebSocket event listener cleanup, infinite reconnection logic, and a `PRICE_CHANGE_THRESHOLD` for more accurate price change detection, mitigating floating-point comparison issues. `dataRef.current` updates are now synchronized with `data` state changes via `useEffect`.
+*   **Backend WebSocket Stability & Data Collection**:
+    *   `EnhancedWebSocketClient` (`backend/app/enhanced_websocket.py`) now explicitly handles `ping_interval` and `ping_timeout` for improved connection stability. Its `run_with_retry` method was modified to attempt infinite reconnections.
+    *   `upbit_websocket_client()` and `binance_websocket_client()` in `backend/app/services.py` have been refactored to utilize the `EnhancedWebSocketClient` for consistent and resilient WebSocket management.
+    *   Added debug logging in `backend/app/main.py`'s `price_aggregator` to monitor data broadcast.
+*   **Containerization & Deployment Enhancements**:
+    *   `docker-compose.yml` updated: `backend` service now includes a `healthcheck` to ensure it's ready before `frontend` starts. `frontend`'s `depends_on` condition was updated to `service_healthy`. `backend` service's port mapping was explicitly set to `0.0.0.0:8000:8000` to ensure accessibility from the host. `frontend`'s `REACT_APP_BACKEND_URL` environment variable was changed to `http://backend:8000` to leverage Docker's internal networking.
+    *   `backend/Dockerfile` was modified to include `curl` installation for health checks and a comment was added to force Docker cache invalidation for rebuilds.
+    *   `frontend/Dockerfile` was modified with a comment to force `npm install` during rebuilds.
+*   **CORS Configuration**: `backend/app/main.py`'s `CORSMiddleware` `allow_origins` was temporarily set to `*` for debugging purposes to resolve cross-origin request blocking.
 
 ## System Architecture Summary
 The system employs a modern, containerized microservices architecture.
@@ -192,8 +202,7 @@ The backend is not a single application but is split into several specialized se
 ### 3. Frontend: React Single Page Application (SPA)
 *   **User Interface (`frontend`):** A standard React application that runs entirely in the user's browser.
 *   **Real-time Updates:** It establishes a persistent WebSocket connection to the main backend's `/ws/prices` and `/ws/liquidations` endpoints. This allows the UI to update in real-time as new data is broadcast from the server, without needing to constantly poll for changes.
-*   **Component-Based UI:** The interface is built from modular components like `CoinTable`, `SidebarLiquidations`, and `FearGree
-dIndex`, each responsible for a specific part of the display.
+*   **Component-Based UI:** The interface is built from modular components like `CoinTable`, `SidebarLiquidations`, and `FearGreedIndex`, each responsible for a specific part of the display.
 
 ### Data Flow Summary
 The end-to-end data flow is a key part of the architecture:

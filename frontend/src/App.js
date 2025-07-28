@@ -31,6 +31,12 @@ function App() {
     refresh
   } = usePriceData();
   
+  // App.js에서 받은 데이터 확인
+  const xrpInApp = allCoinsData?.find(coin => coin.symbol === 'XRP');
+  if (xrpInApp) {
+    console.log(`🔍 [App.js] XRP 데이터 받음: upbit_price=${xrpInApp.upbit_price}, 배열길이=${allCoinsData.length}`);
+  }
+  
   // 거래소 선택 핸들러 메모이제이션
   const handleDomesticExchangeChange = useCallback((exchange) => {
     setSelectedDomesticExchange(exchange);

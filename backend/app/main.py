@@ -27,7 +27,7 @@ app = FastAPI()
 # --- CORS 설정 ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -57,6 +57,9 @@ class ConnectionManager:
 
 price_manager = ConnectionManager()
 liquidation_manager = ConnectionManager()
+
+# 이전 브로드캐스트 데이터를 저장하여 변화 감지
+previous_broadcast_data = {}
 
 # --- Data Aggregator and Broadcaster ---
 async def price_aggregator():
@@ -141,12 +144,51 @@ async def price_aggregator():
 
 
         if all_coins_data:
-            # 실시간 데이터 브로드캐스팅 (연결된 클라이언트 수 관계없이 1초마다 실행됨)
+            # 변화 감지: 이전 데이터와 비교하여 실제 변화가 있는 코인만 확인
+            changed_coins = []
+            
+            for coin_data in all_coins_data:
+                symbol = coin_data["symbol"]
+                current_upbit_price = coin_data.get("upbit_price")
+                current_binance_price = coin_data.get("binance_price")
+                
+                # 이전 데이터와 비교
+                prev_data = previous_broadcast_data.get(symbol, {})
+                prev_upbit_price = prev_data.get("upbit_price")
+                prev_binance_price = prev_data.get("binance_price")
+                
+                # 가격 변화가 있는지 확인
+                price_changed = (
+                    current_upbit_price != prev_upbit_price or 
+                    current_binance_price != prev_binance_price
+                )
+                
+                if price_changed:
+                    changed_coins.append(symbol)
+                    # 실제 변화한 코인의 가격 상세 정보 로그 (처음 몇 개만)
+                    if len(changed_coins) <= 3:
+                        logger.info(f"🔄 {symbol} 가격 변화: Upbit {prev_upbit_price} → {current_upbit_price}, Binance {prev_binance_price} → {current_binance_price}")
+                    
+                # 현재 데이터를 이전 데이터로 저장
+                previous_broadcast_data[symbol] = {
+                    "upbit_price": current_upbit_price,
+                    "binance_price": current_binance_price
+                }
+            
+            # 디버깅 로그: 브로드캐스트 직전 데이터 확인
+            if len(all_coins_data) > 0:
+                sample_coin = all_coins_data[0]
+                logger.info(f"[price_aggregator] Broadcasting {len(all_coins_data)} coins. Sample: {sample_coin['symbol']} Upbit: {sample_coin.get('upbit_price')} Binance: {sample_coin.get('binance_price')}")
+            
+            # 항상 브로드캐스트 (프론트엔드에서 일관된 데이터 수신을 위해)
             await price_manager.broadcast(json.dumps(all_coins_data))
             
-            # 연결된 클라이언트가 있을 때만 로그 출력
+            # 연결된 클라이언트가 있을 때 변화 정보와 함께 로그 출력
             if len(price_manager.active_connections) > 0:
-                logger.info(f"📡 실시간 브로드캐스팅: {len(all_coins_data)}개 코인 → {len(price_manager.active_connections)}명 클라이언트")
+                if changed_coins:
+                    logger.info(f"📡 실시간 브로드캐스팅: {len(all_coins_data)}개 코인 → {len(price_manager.active_connections)}명 클라이언트 | 가격 변화: {', '.join(changed_coins[:5])}{'...' if len(changed_coins) > 5 else ''}")
+                else:
+                    logger.info(f"📡 실시간 브로드캐스팅: {len(all_coins_data)}개 코인 → {len(price_manager.active_connections)}명 클라이언트 | 가격 변화 없음")
         else:
             logger.warning(f"No coin data to broadcast - upbit: {len(upbit_tickers)}, binance: {len(binance_tickers)}, exchange_rate: {exchange_rate}")
 

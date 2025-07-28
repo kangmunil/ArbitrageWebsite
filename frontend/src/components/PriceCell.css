@@ -1,0 +1,48 @@
+/* frontend/src/components/PriceCell.css */
+.price-cell {
+  text-align: right;
+  /* Smooth transition for background color if needed, though animation is more direct */
+  transition: background-color 0.3s ease-in-out;
+}
+
+/* Animation for price increase */
+.price-up {
+  animation: price-up-flash 0.3s ease-in-out;
+}
+
+/* Animation for price decrease */
+.price-down {
+  animation: price-down-flash 0.3s ease-in-out;
+}
+
+@keyframes price-up-flash {
+  0% {
+    background-color: rgba(214, 73, 93, 0.5); /* Red flash */
+    color: white;
+  }
+  100% {
+    background-color: transparent;
+    color: inherit;
+  }
+}
+
+@keyframes price-down-flash {
+  0% {
+    background-color: rgba(63, 138, 232, 0.5); /* Blue flash */
+    color: white;
+  }
+  100% {
+    background-color: transparent;
+    color: inherit;
+  }
+}
+
+.price-cell .currency {
+  font-size: 0.8em;
+  color: #6c757d; /* A muted gray color */
+  margin-right: 4px;
+}
+
+.price-cell .price {
+  font-weight: 500;
+}

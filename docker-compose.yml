@@ -1,33 +1,7 @@
 
 version: '3.8'
 services:
-  # 청산 데이터 수집 전용 서비스
-  liquidation-service:
-    build: ./backend/liquidation_service
-    ports:
-      - "8001:8001"
-    volumes:
-      - ./backend/liquidation_service:/app
-    environment:
-      - PORT=8001
-    restart: unless-stopped
-
-  # 코인 가격 수집 전용 서비스  
-  coinprice-service:
-    build: ./backend/coinprice_service
-    ports:
-      - "8002:8002"
-    volumes:
-      - ./backend/coinprice_service:/app
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      - PORT=8002
-      - DATABASE_URL=mysql+pymysql://user:password@db/kimchiscan
-    restart: unless-stopped
-
-  # 기존 백엔드는 API 게이트웨이 역할로 축소
+  # 통합된 백엔드 서비스 (가격 데이터 + 청산 데이터 모두 처리)
   backend:
     build: ./backend
     ports:
@@ -37,15 +11,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      liquidation-service:
-        condition: service_started
-      coinprice-service:
-        condition: service_started
     environment:
       - DATABASE_URL=mysql+pymysql://user:password@db/kimchiscan
-      - LIQUIDATION_SERVICE_URL=http://liquidation-service:8001
-      - COINPRICE_SERVICE_URL=http://coinprice-service:8002
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   frontend:
     build: ./frontend
@@ -57,13 +30,10 @@ services:
     stdin_open: true
     tty: true
     depends_on:
-      - backend
-      - liquidation-service
-      - coinprice-service
+      backend:
+        condition: service_healthy
     environment:
-      - REACT_APP_BACKEND_URL=http://localhost:8000
-      - REACT_APP_LIQUIDATION_SERVICE_URL=http://localhost:8001
-      - REACT_APP_COINPRICE_SERVICE_URL=http://localhost:8002
+      - REACT_APP_BACKEND_URL=http://backend:8000
     restart: unless-stopped
 
   db:

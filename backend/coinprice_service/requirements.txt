@@ -1,9 +1,0 @@
-fastapi
-uvicorn[standard]
-sqlalchemy
-PyMySQL
-cryptography
-requests
-beautifulsoup4
-lxml
-aiohttp

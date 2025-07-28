@@ -42,7 +42,9 @@ class EnhancedWebSocketClient:
         max_retries: int = 10,
         initial_retry_delay: float = 1.0,
         max_retry_delay: float = 60.0,
-        timeout: float = 30.0
+        timeout: float = 30.0,
+        ping_interval: Optional[float] = 20.0,  # Add ping_interval
+        ping_timeout: Optional[float] = 10.0   # Add ping_timeout
     ):
         self.uri = uri
         self.name = name
@@ -50,6 +52,8 @@ class EnhancedWebSocketClient:
         self.initial_retry_delay = initial_retry_delay
         self.max_retry_delay = max_retry_delay
         self.timeout = timeout
+        self.ping_interval = ping_interval  # Add this line
+        self.ping_timeout = ping_timeout    # Add this line
         
         self.state = ConnectionState.DISCONNECTED
         self.websocket: Optional[Any] = None
@@ -91,7 +95,11 @@ class EnhancedWebSocketClient:
         
         try:
             self.websocket = await asyncio.wait_for(
-                websockets_connect(self.uri),
+                websockets_connect(
+                    self.uri,
+                    ping_interval=self.ping_interval,  # Use ping_interval
+                    ping_timeout=self.ping_timeout    # Use ping_timeout
+                ),
                 timeout=self.timeout
             )
             
@@ -220,8 +228,7 @@ class EnhancedWebSocketClient:
                 delay = self.get_retry_delay()
                 await asyncio.sleep(delay)
         
-        logger.error(f"{self.name}: 최대 재시도 횟수 초과, WebSocket 클라이언트 중단")
-        await self.disconnect()
+        
     
     def get_stats(self) -> Dict[str, Any]:
         """연결 통계 정보 반환"""
