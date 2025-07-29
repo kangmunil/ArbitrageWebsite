@@ -386,7 +386,13 @@ class ResilientExchangeManager:
             await client.disconnect()
     
     async def _on_failover_event(self, event: FailoverEvent):
-        """페일오버 이벤트 처리"""
+        """페일오버 이벤트 발생 시 호출되는 콜백 함수입니다.
+
+        해당 거래소의 클라이언트를 재시작하여 새로운 엔드포인트로 연결을 시도합니다.
+
+        Args:
+            event (FailoverEvent): 발생한 페일오버 이벤트 객체.
+        """
         exchange = event.exchange
         
         # 해당 거래소 클라이언트 재시작
@@ -407,14 +413,29 @@ class ResilientExchangeManager:
                 logger.error(f"{exchange} 페일오버 처리 중 오류: {e}")
     
     async def _on_recovery_event(self, exchange: str):
-        """복구 이벤트 처리"""
+        """서비스 복구 이벤트 발생 시 호출되는 콜백 함수입니다.
+
+        서비스 복구 상태를 로깅하고, 필요 시 알림을 전송합니다.
+
+        Args:
+            exchange (str): 복구된 서비스의 거래소 이름.
+        """
         logger.info(f"{exchange} 서비스 복구 완료")
         
-        # 알림 시스템에 복구 상태 전송 (향후 구현)
-        pass
+        if self.on_recovery:
+            callback = self.on_recovery
+            await callback(exchange)
     
     async def _on_client_error(self, exchange: str, error: Exception):
-        """클라이언트 오류 처리"""
+        """거래소 클라이언트에서 오류 발생 시 호출되는 콜백 함수입니다.
+
+        오류 유형을 분석하여 타임아웃 또는 Rate Limit과 같은 특정 오류에 대해
+        페일오버를 트리거합니다.
+
+        Args:
+            exchange (str): 오류가 발생한 거래소 이름.
+            error (Exception): 발생한 예외 객체.
+        """
         logger.warning(f"{exchange} 클라이언트 오류: {error}")
         
         # 오류 유형에 따른 페일오버 트리거
@@ -424,7 +445,14 @@ class ResilientExchangeManager:
             await self.failover_manager._handle_failover(exchange, FailoverTrigger.RATE_LIMITED)
     
     def get_system_status(self) -> Dict[str, Any]:
-        """전체 시스템 상태 반환"""
+        """전체 시스템의 현재 상태를 종합하여 반환합니다.
+
+        페일오버 관리자, 거래소 클라이언트, 데이터 품질 모니터의 상태 정보를
+        포함하는 딕셔너리를 생성하여 반환합니다.
+
+        Returns:
+            Dict[str, Any]: 시스템의 종합 상태 정보.
+        """
         return {
             "failover_manager": self.failover_manager.get_health_summary(),
             "exchange_clients": {
@@ -445,7 +473,11 @@ class DataQualityMonitor:
         self.anomaly_threshold = 0.8  # 품질 점수 임계값
         
     async def start_monitoring(self):
-        """데이터 품질 모니터링 시작"""
+        """데이터 품질 모니터링을 주기적으로 실행하는 태스크를 시작합니다.
+
+        무한 루프를 돌며 주기적으로 모든 거래소의 데이터 품질을 분석하고,
+        품질 저하가 감지되면 경고를 로깅합니다.
+        """
         while True:
             try:
                 # 주기적으로 데이터 품질 분석
@@ -463,7 +495,14 @@ class DataQualityMonitor:
                 await asyncio.sleep(10)
     
     def record_data_sample(self, exchange: str, data: Dict[str, Any]):
-        """데이터 샘플 기록"""
+        """수신된 데이터 샘플을 기록하고 유효성을 검사합니다.
+
+        데이터의 유효성을 검사한 후, 타임스탬프와 함께 샘플을 내부 기록에 추가합니다.
+
+        Args:
+            exchange (str): 데이터가 수신된 거래소 이름.
+            data (Dict[str, Any]): 수신된 데이터 샘플.
+        """
         sample = {
             "timestamp": time.time(),
             "price": data.get("price", 0),
@@ -475,7 +514,17 @@ class DataQualityMonitor:
         self.data_samples[exchange].append(sample)
     
     def _validate_data(self, data: Dict[str, Any]) -> bool:
-        """데이터 유효성 검사"""
+        """데이터의 기본적인 유효성을 검사합니다.
+
+        가격이 0 이하이거나, 거래량이 음수이거나, 변동률이 비정상적으로 큰 경우
+        유효하지 않은 데이터로 판단합니다.
+
+        Args:
+            data (Dict[str, Any]): 검사할 데이터.
+
+        Returns:
+            bool: 데이터가 유효하면 True, 그렇지 않으면 False.
+        """
         try:
             price = float(data.get("price", 0))
             volume = float(data.get("volume", 0))
@@ -495,7 +544,17 @@ class DataQualityMonitor:
             return False
     
     def _calculate_quality_score(self, exchange: str) -> float:
-        """데이터 품질 점수 계산 (0.0 ~ 1.0)"""
+        """특정 거래소의 데이터 품질 점수를 계산합니다.
+
+        기록된 데이터 샘플을 기반으로 유효 데이터 비율과 데이터 신선도를
+        종합하여 0.0에서 1.0 사이의 점수를 반환합니다.
+
+        Args:
+            exchange (str): 품질 점수를 계산할 거래소 이름.
+
+        Returns:
+            float: 계산된 데이터 품질 점수. 샘플이 없으면 0.0을 반환합니다.
+        """
         samples = list(self.data_samples[exchange])
         if not samples:
             return 0.0
@@ -514,7 +573,14 @@ class DataQualityMonitor:
         return quality_score
     
     def get_stats(self) -> Dict[str, Any]:
-        """데이터 품질 통계 반환"""
+        """현재 데이터 품질 모니터링 통계를 반환합니다.
+
+        각 거래소별 품질 점수, 샘플 수, 그리고 전체적인 품질 점수를 포함하는
+        딕셔너리를 반환합니다.
+
+        Returns:
+            Dict[str, Any]: 데이터 품질 통계.
+        """
         return {
             "quality_scores": self.quality_scores,
             "sample_counts": {

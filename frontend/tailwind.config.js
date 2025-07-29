@@ -1,4 +1,11 @@
-/** @type {import('tailwindcss').Config} */
+/**
+ * @type {import('tailwindcss').Config}
+ * @module tailwind.config
+ * @description Tailwind CSS 설정 파일입니다.
+ *              프로젝트에서 사용될 Tailwind 클래스, 테마 확장, 플러그인 등을 정의합니다.
+ *              `content` 필드는 Tailwind가 스캔할 파일 경로를 지정하며,
+ *              `safelist`는 동적으로 생성되어 Tailwind가 감지하지 못할 수 있는 클래스들을 명시적으로 포함시킵니다.
+ */
 module.exports = {
   content: [
     "./src/**/*.{js,jsx,ts,tsx}",

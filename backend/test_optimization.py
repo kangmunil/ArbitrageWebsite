@@ -22,15 +22,40 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class PerformanceTest:
-    """성능 테스트 클래스"""
+    """백엔드 시스템의 성능을 테스트하기 위한 클래스입니다.
+
+    WebSocket 연결, REST API 응답 시간, 시스템 통계 및 메모리 사용량을 측정합니다.
+
+    Attributes:
+        backend_url (str): 테스트할 백엔드 서버의 기본 URL.
+        ws_url (str): 백엔드 WebSocket 서버의 URL.
+        test_results (dict): 실행된 테스트의 결과를 저장하는 딕셔리.
+    """
     
     def __init__(self, backend_url: str = "http://localhost:8000"):
+        """PerformanceTest 클래스의 생성자입니다.
+
+        Args:
+            backend_url (str, optional): 테스트할 백엔드 서버의 URL. 기본값은 "http://localhost:8000"입니다.
+        """
         self.backend_url = backend_url
         self.ws_url = backend_url.replace("http", "ws")
         self.test_results = {}
     
     async def test_websocket_connection(self, duration: int = 30) -> Dict[str, Any]:
-        """WebSocket 연결 테스트"""
+        """지정된 시간 동안 WebSocket 연결을 테스트하고 성능 지표를 수집합니다.
+
+        메시지 수신 빈도, 메시지 크기, 연결 지연 시간 등을 측정합니다.
+
+        Args:
+            duration (int, optional): WebSocket 연결을 테스트할 시간(초). 기본값은 30초입니다.
+
+        Returns:
+            Dict[str, Any]: 테스트 결과를 담은 딕셔너리.
+                            포함되는 키: 'duration', 'messages_received', 'connection_attempts',
+                            'connection_errors', 'messages_per_second', 'avg_message_size',
+                            'avg_latency', 'max_latency', 'min_latency'.
+        """
         logger.info(f"WebSocket 연결 테스트 시작 ({duration}초)")
         
         messages_received = 0
@@ -100,7 +125,19 @@ class PerformanceTest:
         }
     
     async def test_rest_api_performance(self, num_requests: int = 100) -> Dict[str, Any]:
-        """REST API 성능 테스트"""
+        """지정된 횟수만큼 REST API 엔드포인트에 요청을 보내 성능을 테스트합니다.
+
+        각 엔드포인트별로 성공률, 평균/최소/최대/중앙값 응답 시간을 측정합니다.
+
+        Args:
+            num_requests (int, optional): 각 엔드포인트에 보낼 요청의 수. 기본값은 100입니다.
+
+        Returns:
+            Dict[str, Any]: 각 엔드포인트별 테스트 결과를 담은 딕셔너리.
+                            각 엔드포인트 결과는 'total_requests', 'successful_requests',
+                            'failed_requests', 'success_rate', 'avg_response_time',
+                            'min_response_time', 'max_response_time', 'median_response_time'를 포함합니다.
+        """
         logger.info(f"REST API 성능 테스트 시작 ({num_requests}개 요청)")
         
         endpoints = [
@@ -158,7 +195,14 @@ class PerformanceTest:
         return results
     
     async def test_system_stats(self) -> Dict[str, Any]:
-        """시스템 통계 확인"""
+        """백엔드 시스템의 현재 통계 데이터를 조회합니다.
+
+        백엔드 API의 `/api/stats` 엔드포인트에 요청을 보내 시스템 통계 정보를 가져옵니다.
+
+        Returns:
+            Dict[str, Any]: 시스템 통계 데이터를 담은 딕셔너리.
+                            요청 실패 시 'error' 키를 포함하는 딕셔너리를 반환합니다.
+        """
         logger.info("시스템 통계 확인")
         
         try:
@@ -173,7 +217,17 @@ class PerformanceTest:
             return {"error": str(e)}
     
     async def test_memory_usage(self, duration: int = 60) -> Dict[str, Any]:
-        """메모리 사용량 테스트"""
+        """지정된 시간 동안 백엔드 시스템의 메모리 사용량을 모니터링합니다.
+
+        주기적으로 시스템 통계를 조회하여 메모리 관련 지표를 기록합니다.
+
+        Args:
+            duration (int, optional): 메모리 사용량을 모니터링할 시간(초). 기본값은 60초입니다.
+
+        Returns:
+            Dict[str, Any]: 메모리 사용량 모니터링 결과를 담은 딕셔너리.
+                            'duration', 'samples', 'history' 키를 포함합니다.
+        """
         logger.info(f"메모리 사용량 모니터링 ({duration}초)")
         
         stats_history = []
@@ -200,7 +254,14 @@ class PerformanceTest:
         }
     
     def analyze_results(self) -> Dict[str, Any]:
-        """테스트 결과 분석"""
+        """수집된 테스트 결과를 분석하고 성능 요약 및 개선 권장 사항을 생성합니다.
+
+        WebSocket 및 REST API 테스트 결과를 기반으로 전반적인 성능 점수를 계산합니다.
+
+        Returns:
+            Dict[str, Any]: 분석 결과를 담은 딕셔너리.
+                            'summary', 'recommendations', 'performance_score' 키를 포함합니다.
+        """
         logger.info("테스트 결과 분석 중...")
         
         analysis = {
@@ -276,7 +337,14 @@ class PerformanceTest:
         return analysis
     
     async def run_comprehensive_test(self) -> Dict[str, Any]:
-        """종합 성능 테스트 실행"""
+        """백엔드 시스템에 대한 종합적인 성능 테스트를 실행합니다.
+
+        WebSocket 연결 테스트, REST API 성능 테스트, 시스템 통계 확인,
+        메모리 사용량 테스트를 순차적으로 수행하고, 그 결과를 분석합니다.
+
+        Returns:
+            Dict[str, Any]: 모든 테스트 결과와 분석을 포함하는 딕셔너리.
+        """
         logger.info("=== 백엔드 최적화 종합 테스트 시작 ===")
         
         # 1. WebSocket 연결 테스트
@@ -299,7 +367,14 @@ class PerformanceTest:
         return self.test_results
 
 def print_test_results(results: Dict[str, Any]):
-    """테스트 결과 출력"""
+    """성능 테스트 결과를 콘솔에 보기 좋게 출력합니다.
+
+    성능 점수, WebSocket 테스트 결과, REST API 테스트 결과, 시스템 통계,
+    그리고 개선 권장 사항을 포함하여 상세하게 출력합니다.
+
+    Args:
+        results (Dict[str, Any]): `run_comprehensive_test` 함수에서 반환된 테스트 결과 딕셔너리.
+    """
     print("\n" + "="*60)
     print("백엔드 최적화 테스트 결과")
     print("="*60)
@@ -358,8 +433,15 @@ def print_test_results(results: Dict[str, Any]):
     
     print("\n" + "="*60)
 
+
 async def main():
-    """메인 실행 함수"""
+    """스크립트의 메인 실행 함수입니다.
+
+    명령줄 인수를 통해 백엔드 URL을 받아 테스트를 실행하거나,
+    기본값인 "http://localhost:8000"을 사용합니다.
+    백엔드 서버의 가용성을 확인한 후, `PerformanceTest`를 초기화하고
+    종합 테스트를 실행하며, 결과를 콘솔에 출력하고 JSON 파일로 저장합니다.
+    """
     if len(sys.argv) > 1:
         backend_url = sys.argv[1]
     else:

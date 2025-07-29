@@ -10,12 +10,13 @@ const FearGreedIndex = lazy(() => import('./components/FearGreedIndex'));
 const SidebarLiquidations = lazy(() => import('./components/SidebarLiquidations'));
 
 /**
- * 암호화폐 차익거래 모니터링 웹사이트의 메인 애플리케이션 컴포넌트.
- * 
- * WebSocket을 통해 실시간 가격 데이터를 받아오고,
- * 한국과 해외 거래소 간의 가격 차이(김치 프리미엄)를 모니터링합니다.
- * 
- * @returns {JSX.Element} 메인 애플리케이션 UI
+ * 암호화폐 차익거래 모니터링 웹사이트의 메인 애플리케이션 컴포넌트입니다.
+ *
+ * 이 컴포넌트는 실시간 가격 데이터를 관리하고, 국내 및 해외 거래소 선택 상태를 유지하며,
+ * 하위 컴포넌트(CoinTable, FearGreedIndex, SidebarLiquidations)를 렌더링합니다.
+ * `usePriceData` 훅을 통해 WebSocket 연결 상태 및 가격 데이터를 가져옵니다.
+ *
+ * @returns {JSX.Element} 전체 애플리케이션의 UI를 나타내는 JSX 요소.
  */
 function App() {
   const [selectedDomesticExchange, setSelectedDomesticExchange] = useState('upbit'); // 선택된 국내 거래소 (기본: Upbit)
@@ -39,10 +40,22 @@ function App() {
   
   // 거래소 선택 핸들러 메모이제이션
   const handleDomesticExchangeChange = useCallback((exchange) => {
+    /**
+     * 선택된 국내 거래소를 업데이트하는 콜백 함수입니다.
+     * `useCallback`을 사용하여 불필요한 리렌더링을 방지합니다.
+     *
+     * @param {string} exchange - 새로 선택된 국내 거래소의 이름 (예: 'upbit', 'bithumb').
+     */
     setSelectedDomesticExchange(exchange);
   }, []);
   
   const handleGlobalExchangeChange = useCallback((exchange) => {
+    /**
+     * 선택된 해외 거래소를 업데이트하는 콜백 함수입니다.
+     * `useCallback`을 사용하여 불필요한 리렌더링을 방지합니다.
+     *
+     * @param {string} exchange - 새로 선택된 해외 거래소의 이름 (예: 'binance', 'bybit').
+     */
     setSelectedGlobalExchange(exchange);
   }, []);
   
@@ -50,6 +63,13 @@ function App() {
   
   // 연결 상태 표시
   const getConnectionStatusColor = (status) => {
+    /**
+     * 주어진 연결 상태 문자열에 따라 해당하는 색상 코드를 반환합니다.
+     * UI에서 연결 상태를 시각적으로 나타내는 데 사용됩니다.
+     *
+     * @param {string} status - 현재 연결 상태 (예: 'connected', 'loading', 'disconnected', 'error', 'failed').
+     * @returns {string} 상태에 해당하는 CSS 색상 코드 (예: '#10b981').
+     */
     switch (status) {
       case 'connected': return '#10b981'; // green
       case 'loaded': return '#059669'; // dark green

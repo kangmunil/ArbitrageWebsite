@@ -52,6 +52,14 @@ class Alert:
     metadata: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
+        """Alert 객체를 딕셔너리로 변환합니다.
+
+        Alert 객체의 모든 필드를 JSON 직렬화가 가능한 딕셔너리 형태로 변환하여 반환합니다.
+        Enum 멤버는 값으로 변환됩니다.
+
+        Returns:
+            Dict[str, Any]: Alert 객체의 딕셔너리 표현.
+        """
         return {
             "title": self.title,
             "message": self.message,

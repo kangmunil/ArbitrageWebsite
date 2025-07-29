@@ -6,13 +6,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict
 from sqlalchemy.orm import Session
 
-from . import services
+import aiohttp
+import requests
+from . import services  # 가능한 경우 기존 서비스 유지
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from liquidation_service.liquidation_stats_collector import start_liquidation_stats_collection, set_websocket_manager, get_aggregated_liquidation_data
 from .database import get_db
 from .models import Cryptocurrency
+from .aggregator import MarketDataAggregator
+from shared.websocket_manager import create_websocket_manager, WebSocketEndpoint
+from shared.health_checker import create_api_gateway_health_checker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,6 +26,10 @@ logger = logging.getLogger(__name__)
 logging.getLogger('websockets.client').setLevel(logging.WARNING)
 logging.getLogger('websockets.server').setLevel(logging.WARNING)
 logging.getLogger('websockets').setLevel(logging.WARNING)
+
+# 서비스 URL 설정
+MARKET_SERVICE_URL = os.getenv("MARKET_SERVICE_URL", "http://market-service:8001")
+LIQUIDATION_SERVICE_URL = os.getenv("LIQUIDATION_SERVICE_URL", "http://liquidation-service:8002")
 
 app = FastAPI()
 
@@ -33,116 +42,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- WebSocket Connection Manager ---
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
+# --- WebSocket Connection Managers ---
+price_manager = create_websocket_manager("api-gateway-prices")
+liquidation_manager = create_websocket_manager("api-gateway-liquidations")
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
+# 데이터 집계기 인스턴스
+aggregator = MarketDataAggregator(MARKET_SERVICE_URL, LIQUIDATION_SERVICE_URL)
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def broadcast(self, message: str):
-        disconnected_clients = []
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(message)
-            except Exception:
-                disconnected_clients.append(connection)
-        for client in disconnected_clients:
-            self.disconnect(client)
-
-price_manager = ConnectionManager()
-liquidation_manager = ConnectionManager()
+# 헬스체커 인스턴스
+health_checker = None
 
 # 이전 브로드캐스트 데이터를 저장하여 변화 감지
 previous_broadcast_data = {}
 
 # --- Data Aggregator and Broadcaster ---
 async def price_aggregator():
+    """기존 로직을 API Gateway 방식으로 변경
+    이제 Market Data Service에서 데이터를 가져옵니다.
     """
-    shared_data를 주기적으로 읽어 최종 데이터를 조립하고,
-    모든 WebSocket 클라이언트에게 브로드캐스트합니다.
+    """실시간 코인 데이터를 주기적으로 집계하고 처리하여 WebSocket 클라이언트에 브로드캐스트합니다.
+
+    shared_data에서 업비트, 바이낸스, 바이비트 등의 티커 데이터와 환율 정보를 읽어와
+    김치 프리미엄을 계산하고, 거래량 데이터를 KRW로 변환합니다.
+    데이터에 변화가 있을 경우에만 로그를 출력하며, 모든 연결된 클라이언트에게 데이터를 JSON 형식으로 전송합니다.
     """
     while True:
         await asyncio.sleep(1) # 1초마다 데이터 집계 및 전송
 
-        all_coins_data = []
-        upbit_tickers = services.shared_data["upbit_tickers"]
-        bithumb_tickers = services.shared_data["bithumb_tickers"]
-        binance_tickers = services.shared_data["binance_tickers"]
-        bybit_tickers = services.shared_data["bybit_tickers"]
-        exchange_rate = services.shared_data["exchange_rate"]
-        usdt_krw_rate = services.shared_data["usdt_krw_rate"]
-
-        if not (upbit_tickers or bithumb_tickers) or not exchange_rate:
-            logger.warning(f"Missing data - upbit: {len(upbit_tickers)}, bithumb: {len(bithumb_tickers)}, binance: {len(binance_tickers)}, exchange_rate: {exchange_rate}, usdt_krw: {usdt_krw_rate}")
+        # Market Data Service에서 데이터 가져오기
+        try:
+            all_coins_data = await aggregator.get_combined_market_data()
+            if not all_coins_data:
+                logger.warning("Market Data Service에서 데이터를 가져올 수 없습니다.")
+                continue
+        except Exception as e:
+            logger.error(f"Market Data Service 연결 오류: {e}")
             continue
 
-        # 모든 거래소에서 사용 가능한 심볼들을 수집
-        all_symbols = set()
-        all_symbols.update(upbit_tickers.keys())
-        all_symbols.update(bithumb_tickers.keys())
-        all_symbols.update(binance_tickers.keys())
-        all_symbols.update(bybit_tickers.keys())
+        # 데이터가 이미 Market Data Service에서 처리되어 옵니다.
+        # 이미 all_coins_data에 집계되어 있음
 
-        for symbol in all_symbols:
-            upbit_ticker = upbit_tickers.get(symbol, {})
-            bithumb_ticker = bithumb_tickers.get(symbol, {})
-            binance_ticker = binance_tickers.get(symbol, {})
-            bybit_ticker = bybit_tickers.get(symbol, {})
-
-            upbit_price = upbit_ticker.get("price")
-            bithumb_price = bithumb_ticker.get("price")
-            binance_price = binance_ticker.get("price")
-
-            # 김프 계산 (국내 거래소 기준으로)
-            premium = None
-            domestic_price = upbit_price or bithumb_price  # 업비트 우선, 없으면 빗썸
-            if domestic_price and binance_price and exchange_rate:
-                binance_price_krw = binance_price * exchange_rate
-                if binance_price_krw > 0:
-                    premium = ((domestic_price - binance_price_krw) / binance_price_krw) * 100
-
-            # Binance volume (원본 USDT와 KRW 변환 모두 제공)
-            binance_volume_usd = binance_ticker.get("volume")  # USDT 거래대금
-            binance_volume_krw = None
-            if binance_volume_usd is not None and usdt_krw_rate is not None:
-                binance_volume_krw = binance_volume_usd * usdt_krw_rate
-
-            # Bybit volume (원본 USDT와 KRW 변환 모두 제공)
-            bybit_volume_usd = bybit_ticker.get("volume")  # USDT 거래대금
-            bybit_volume_krw = None
-            if bybit_volume_usd is not None and usdt_krw_rate is not None:
-                bybit_volume_krw = bybit_volume_usd * usdt_krw_rate
-
-            coin_data = {
-                "symbol": symbol,
-                "upbit_price": upbit_price,
-                "upbit_volume": upbit_ticker.get("volume"),
-                "upbit_change_percent": upbit_ticker.get("change_percent"),
-                "bithumb_price": bithumb_price,
-                "bithumb_volume": bithumb_ticker.get("volume"),
-                "bithumb_change_percent": bithumb_ticker.get("change_percent"),
-                "binance_price": binance_price,
-                "binance_volume": binance_volume_krw, # KRW 변환된 거래량
-                "binance_volume_usd": binance_volume_usd, # 원본 USDT 거래량
-                "binance_change_percent": binance_ticker.get("change_percent"),
-                "bybit_price": bybit_ticker.get("price"),
-                "bybit_volume": bybit_volume_krw, # KRW 변환된 거래량
-                "bybit_volume_usd": bybit_volume_usd, # 원본 USDT 거래량
-                "bybit_change_percent": bybit_ticker.get("change_percent"),
-                "premium": round(premium, 2) if premium is not None else None,
-                "exchange_rate": exchange_rate,
-                "usdt_krw_rate": usdt_krw_rate,
-            }
-            
-            # 최소한 하나의 거래소라도 가격 데이터가 있는 경우에만 추가
-            if upbit_price is not None or bithumb_price is not None or binance_price is not None or bybit_price is not None:
-                all_coins_data.append(coin_data)
+        # Market Data Service에서 이미 처리된 데이터를 사용
+        # 별도의 가공 불필요
 
 
         if all_coins_data:
@@ -183,10 +124,10 @@ async def price_aggregator():
                 logger.info(f"[price_aggregator] Broadcasting {len(all_coins_data)} coins. Sample: {sample_coin['symbol']} Upbit: {sample_coin.get('upbit_price')} Binance: {sample_coin.get('binance_price')}")
             
             # 항상 브로드캐스트 (프론트엔드에서 일관된 데이터 수신을 위해)
-            await price_manager.broadcast(json.dumps(all_coins_data))
+            await price_manager.broadcast_json(all_coins_data, "price_update")
             
             # 연결된 클라이언트가 있을 때 변화 정보와 함께 로그 출력
-            if len(price_manager.active_connections) > 0:
+            if price_manager.is_connected():
                 if changed_coins:
                     logger.info(f"📡 실시간 브로드캐스팅: {len(all_coins_data)}개 코인 → {len(price_manager.active_connections)}명 클라이언트 | 가격 변화: {', '.join(changed_coins[:5])}{'...' if len(changed_coins) > 5 else ''}")
                 else:
@@ -198,159 +139,135 @@ async def price_aggregator():
 # --- FastAPI Events ---
 @app.on_event("startup")
 async def startup_event():
-    """애플리케이션 시작 시 백그라운드 태스크를 실행합니다."""
-    logger.info("백그라운드 데이터 수집 태스크를 시작합니다.")
-    # 각 거래소 WebSocket 클라이언트 및 기타 데이터 수집기 실행
-    asyncio.create_task(services.upbit_websocket_client())
-    asyncio.create_task(services.bithumb_rest_client())
-    asyncio.create_task(services.binance_websocket_client())
-    asyncio.create_task(services.bybit_websocket_client())
-    asyncio.create_task(services.fetch_exchange_rate_periodically())
-    asyncio.create_task(services.fetch_usdt_krw_rate_periodically())
-
+    """애플리케이션 시작 시 필요한 백그라운드 태스크들을 초기화하고 실행합니다."""
+    global health_checker
+    
+    logger.info("🚀 API Gateway 시작")
+    
+    # 헬스체커 초기화
+    health_checker = create_api_gateway_health_checker(
+        aggregator, 
+        price_manager, 
+        liquidation_manager
+    )
+    
     # 가격 집계 및 브로드캐스트 태스크 시작
-    logger.info("가격 집계 태스크를 시작합니다.")
+    logger.info("📊 가격 집계 태스크를 시작합니다.")
     asyncio.create_task(price_aggregator())
 
     # 청산 통계 수집 시작
-    logger.info("청산 통계 수집을 시작합니다.")
-    set_websocket_manager(liquidation_manager) # liquidation_stats_collector 시스템 사용
+    logger.info("⚡ 청산 통계 수집을 시작합니다.")
+    set_websocket_manager(liquidation_manager) # 통합된 liquidation_stats_collector 시스템 사용
     asyncio.create_task(start_liquidation_stats_collection())
 
 
 # --- WebSocket Endpoint ---
 @app.websocket("/ws/prices")
 async def websocket_prices_endpoint(websocket: WebSocket):
-    """실시간 가격 데이터를 위한 WebSocket 엔드포인트."""
-    await price_manager.connect(websocket)
-    logger.info(f"클라이언트 연결: {websocket.client}. 총 연결: {len(price_manager.active_connections)}")
-    try:
-        while True:
-            # 클라이언트로부터 메시지를 받을 필요는 없지만, 연결 유지를 위해 필요
-            await websocket.receive_text()
-    except Exception:
-        logger.info(f"클라이언트 연결 해제: {websocket.client}")
-    finally:
-        price_manager.disconnect(websocket)
+    """실시간 가격 데이터를 클라이언트에 스트리밍하기 위한 WebSocket 엔드포인트입니다."""
+    
+    async def get_initial_data():
+        """초기 데이터 제공자"""
+        return await aggregator.get_combined_market_data()
+    
+    endpoint = WebSocketEndpoint(price_manager, get_initial_data)
+    await endpoint.handle_connection(websocket, send_initial=True, streaming_interval=1.0)
 
 @app.websocket("/ws/liquidations")
 async def websocket_liquidations_endpoint(websocket: WebSocket):
-    """실시간 청산 데이터를 위한 WebSocket 엔드포인트."""
-    await liquidation_manager.connect(websocket)
-    logger.info(f"청산 클라이언트 연결: {websocket.client}. 총 연결: {len(liquidation_manager.active_connections)}")
-    try:
-        # 초기 데이터 전송
-        initial_data = get_aggregated_liquidation_data(limit=60)
-        await websocket.send_text(json.dumps({"type": "liquidation_initial", "data": initial_data}))
-        while True:
-            await websocket.receive_text()
-    except Exception:
-        logger.info(f"청산 클라이언트 연결 해제: {websocket.client}")
-    finally:
-        liquidation_manager.disconnect(websocket)
+    """실시간 청산 데이터를 클라이언트에 스트리밍하기 위한 WebSocket 엔드포인트입니다."""
+    
+    async def get_initial_data():
+        """초기 청산 데이터 제공자"""
+        return get_aggregated_liquidation_data(limit=60)
+    
+    endpoint = WebSocketEndpoint(liquidation_manager, get_initial_data)
+    await endpoint.handle_connection(websocket, send_initial=True, streaming_interval=1.0)
 
 # --- REST API Endpoints (보조용) ---
 @app.get("/")
 def read_root():
-    return {"message": "KimchiScan API is running!"}
+    """API의 루트 엔드포인트입니다.
+
+    API가 정상적으로 실행 중임을 나타내는 메시지를 반환합니다.
+
+    Returns:
+        dict: API 상태 메시지를 포함하는 딕셔너리.
+    """
+    return {"message": "KimchiScan API Gateway is running!"}
+
+@app.get("/health")
+async def health_check():
+    """API Gateway 서비스 상태 확인"""
+    global health_checker
+    
+    if health_checker:
+        return await health_checker.run_all_checks()
+    else:
+        # 백업 헬스체크 (헬스체커가 초기화되지 않은 경우)
+        from datetime import datetime
+        return {
+            "service": "api-gateway",
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "checks": {
+                "basic": {
+                    "status": "healthy",
+                    "message": "API Gateway is running"
+                }
+            }
+        }
 
 @app.get("/api/fear_greed_index")
 async def get_fear_greed_index_data():
-    """공포/탐욕 지수 데이터를 조회합니다."""
-    return services.get_fear_greed_index()
+    """공포/탐욕 지수 데이터를 조회하고 반환합니다.
 
+    이 함수는 `services` 모듈을 통해 외부 API에서 최신 공포/탐욕 지수 데이터를 가져옵니다.
+
+    Returns:
+        dict: 공포/탐욕 지수 데이터를 포함하는 딕셔너리.
+    """
+    return await aggregator.get_fear_greed_index()
+
+# 청산 데이터 엔드포인트는 liquidation_service로 위임
 @app.get("/api/liquidations/aggregated")
 async def get_aggregated_liquidations(limit: int = 60):
-    """집계된 청산 데이터를 조회합니다."""
+    """청산 데이터 서비스로 요청을 프록시합니다.
+    실제 데이터는 liquidation_service에서 제공됩니다.
+    """
     return get_aggregated_liquidation_data(limit=limit)
 
-@app.get("/api/liquidations/debug")
-async def debug_liquidation_data():
-    """메모리에 저장된 청산 데이터 디버깅."""
-    from liquidation_service.liquidation_stats_collector import liquidation_stats_data
-    
-    debug_info = {}
-    for exchange, data_deque in liquidation_stats_data.items():
-        recent_buckets = list(data_deque)[-5:]  # 최근 5개
-        debug_info[exchange] = {
-            "total_buckets": len(data_deque),
-            "recent_buckets": recent_buckets
-        }
-    
-    return debug_info
+# 디버그 엔드포인트는 liquidation_service/main.py로 이동되어 중복 제거
+# /api/liquidations/debug는 liquidation service에서 직접 제공
 
 @app.get("/api/coins/latest")
 async def get_latest_coin_data():
+    """최신 코인 데이터를 Market Data Service에서 가져옵니다.
+    
+    API Gateway 역할로 Market Data Service의 데이터를 프론트엔드에 제공합니다.
     """
-    현재 집계된 최신 코인 데이터를 반환합니다.
-    (price_aggregator의 로직과 유사)
-    """
-    all_coins_data = []
-    upbit_tickers = services.shared_data["upbit_tickers"]
-    binance_tickers = services.shared_data["binance_tickers"]
-    bybit_tickers = services.shared_data["bybit_tickers"]
-    exchange_rate = services.shared_data["exchange_rate"]
-    usdt_krw_rate = services.shared_data["usdt_krw_rate"]
-
-    if not upbit_tickers or not exchange_rate:
-        return {"count": 0, "data": []}
-
-    for symbol, upbit_ticker in upbit_tickers.items():
-        binance_ticker = binance_tickers.get(symbol, {})
-        bybit_ticker = bybit_tickers.get(symbol, {})
-
-        upbit_price = upbit_ticker.get("price")
-        binance_price = binance_ticker.get("price")
-
-        premium = None
-        if upbit_price and binance_price and exchange_rate:
-            binance_price_krw = binance_price * exchange_rate
-            if binance_price_krw > 0:
-                premium = ((upbit_price - binance_price_krw) / binance_price_krw) * 100
-
-        binance_volume_krw = None
-        if binance_ticker.get("volume") is not None and usdt_krw_rate is not None:
-            usdt_volume = binance_ticker["volume"]
-            binance_volume_krw = usdt_volume * usdt_krw_rate
-
-        # Binance volume (원본 USDT와 KRW 변환 모두 제공)
-        binance_volume_usd = binance_ticker.get("volume")  # USDT 거래대금
-        
-        # Bybit volume (원본 USDT와 KRW 변환 모두 제공)  
-        bybit_volume_usd = bybit_ticker.get("volume")  # USDT 거래대금
-        bybit_volume_krw = None
-        if bybit_volume_usd is not None and usdt_krw_rate is not None:
-            bybit_volume_krw = bybit_volume_usd * usdt_krw_rate
-
-        coin_data = {
-            "symbol": symbol,
-            "upbit_price": upbit_price,
-            "upbit_volume": upbit_ticker.get("volume"),
-            "upbit_change_percent": upbit_ticker.get("change_percent"),
-            "binance_price": binance_price,
-            "binance_volume": binance_volume_krw, # KRW 변환된 거래량
-            "binance_volume_usd": binance_volume_usd, # 원본 USDT 거래량
-            "binance_change_percent": binance_ticker.get("change_percent"),
-            "bybit_price": bybit_ticker.get("price"),
-            "bybit_volume": bybit_volume_krw, # KRW 변환된 거래량
-            "bybit_volume_usd": bybit_volume_usd, # 원본 USDT 거래량
-            "bybit_change_percent": bybit_ticker.get("change_percent"),
-            "premium": round(premium, 2) if premium is not None else None,
-            "exchange_rate": exchange_rate,
-            "usdt_krw_rate": usdt_krw_rate,
-        }
-        all_coins_data.append(coin_data)
-
-    return {"count": len(all_coins_data), "data": all_coins_data}
+    try:
+        combined_data = await aggregator.get_combined_market_data()
+        return {"count": len(combined_data), "data": combined_data}
+    except Exception as e:
+        logger.error(f"Market Data Service 연결 오류: {e}")
+        return {"count": 0, "data": [], "error": str(e)}
 
 
 @app.get("/api/coin-names")
 async def get_coin_names(db: Session = Depends(get_db)) -> Dict[str, str]:
-    """
-    모든 코인의 심볼 -> 한글명 매핑을 반환합니다.
-    
+    """데이터베이스에서 모든 활성 코인의 심볼과 한글명 매핑을 조회하여 반환합니다.
+
+    데이터베이스에서 `is_active` 상태가 True인 모든 암호화폐 정보를 가져와
+    심볼(예: "BTC")을 키로 하고 한글명(예: "비트코인")을 값으로 하는 딕셔너리를 생성합니다.
+    한글명이 없는 경우 심볼을 대신 사용합니다.
+
+    Args:
+        db (Session, optional): FastAPI의 Dependency Injection을 통해 제공되는 데이터베이스 세션.
+
     Returns:
-        Dict[str, str]: 심볼 -> 한글명 매핑 딕셔너리
+        Dict[str, str]: 암호화폐 심볼과 한글명 매핑을 담은 딕셔너리.
+                        조회 중 오류 발생 시 빈 딕셔너리를 반환합니다.
     """
     try:
         # 데이터베이스에서 모든 코인 정보 조회

@@ -261,46 +261,20 @@ async def fetch_usdt_krw_rate_periodically():
 
         await asyncio.sleep(10) # 10초에 한 번씩 업데이트
 
+# === 통합된 거래소 클라이언트 관리 ===
+def get_all_exchange_symbols() -> Dict[str, set]:
+    """모든 거래소의 지원 심볼을 가져옵니다."""
+    from .specialized_clients import get_all_supported_symbols
+    return get_all_supported_symbols()
+
 # --- Legacy Functions (보조용) ---
 # 기존의 다른 거래소 Ticker 함수들은 필요시 여기에 유지하거나 수정할 수 있습니다.
 # 지금은 WebSocket으로 대체되었으므로 대부분 제거합니다.
 
-def get_binance_supported_symbols() -> set:
-    """바이낸스에서 지원하는 USDT 페어 심볼 목록을 가져옵니다."""
-    try:
-        response = requests.get("https://api.binance.com/api/v3/exchangeInfo")
-        response.raise_for_status()
-        data = response.json()
-        return {item['symbol'] for item in data.get('symbols', []) if item['quoteAsset'] == 'USDT' and item['status'] == 'TRADING'}
-    except requests.exceptions.RequestException as e:
-        logger.error(f"바이낸스 지원 심볼 조회 오류: {e}")
-        return set()
+# 지원되는 심볼 조회 함수들을 specialized_clients.py로 이동하여 중복 제거
+# 이 함수들은 specialized_clients.py의 클라이언트별 get_supported_symbols() 메서드로 대체됨
 
-def get_bybit_supported_symbols() -> set:
-    """Bybit에서 지원하는 주요 USDT 페어 심볼 목록을 반환합니다."""
-    # 주요 코인만 하드코딩으로 반환 (API 호출 실패 방지)
-    return {
-        'BTCUSDT', 'ETHUSDT', 'XRPUSDT', 'SOLUSDT', 'ADAUSDT', 
-        'DOGEUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT', 'UNIUSDT'
-    }
-
-def get_bithumb_supported_symbols() -> set:
-    """Bithumb에서 지원하는 KRW 페어 심볼 목록을 가져옵니다."""
-    try:
-        response = requests.get("https://api.bithumb.com/public/ticker/ALL_KRW")
-        response.raise_for_status()
-        data = response.json()
-        
-        if data.get('status') == '0000' and data.get('data'):
-            # 'date' 필드를 제외한 모든 심볼 반환
-            symbols = {symbol for symbol in data['data'].keys() if symbol != 'date'}
-            return symbols
-        return set()
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Bithumb 지원 심볼 조회 오류: {e}")
-        return set()
-
-# 공포/탐욕 지수, 과거 데이터 조회 등 다른 서비스 함수들은 그대로 유지합니다.
+# === 기타 서비스 함수들 ===
 FNG_API_URL = "https://api.alternative.me/fng/"
 
 def get_fear_greed_index() -> Optional[Dict]:

@@ -27,13 +27,23 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SubscriptionRequest:
-    """구독 요청 정보"""
+    """구독 요청 정보를 담는 데이터 클래스입니다.
+
+    Attributes:
+        symbols (Set[str]): 구독할 심볼(코인)들의 집합.
+        channels (Optional[List[str]]): 구독할 채널 목록 (예: "ticker", "orderbook"). 기본값은 None.
+        params (Optional[Dict[str, Any]]): 구독에 필요한 추가 파라미터. 기본값은 None.
+    """
     symbols: Set[str]
     channels: Optional[List[str]] = None
     params: Optional[Dict[str, Any]] = None
 
 class ExchangeClient(ABC):
-    """거래소 클라이언트 기본 클래스"""
+    """거래소 클라이언트의 추상 기본 클래스입니다.
+
+    모든 거래소 클라이언트는 이 클래스를 상속받아 필수 메서드들을 구현해야 합니다.
+    연결 상태, 구독 심볼, 연결 통계 등을 관리합니다.
+    """
     
     def __init__(self, exchange_name: str):
         self.exchange_name = exchange_name
@@ -59,26 +69,56 @@ class ExchangeClient(ABC):
     
     @abstractmethod
     async def connect(self) -> bool:
-        """거래소에 연결"""
+        """거래소에 비동기적으로 연결을 시도합니다.
+
+        이 메서드는 각 거래소 클라이언트에서 반드시 구현되어야 합니다.
+
+        Returns:
+            bool: 연결 성공 여부.
+        """
         pass
     
     @abstractmethod
     async def subscribe(self, request: SubscriptionRequest) -> bool:
-        """데이터 구독"""
+        """지정된 구독 요청에 따라 거래소 데이터를 구독합니다.
+
+        이 메서드는 각 거래소 클라이언트에서 반드시 구현되어야 합니다.
+
+        Args:
+            request (SubscriptionRequest): 구독할 심볼, 채널 및 기타 파라미터 정보를 담은 객체.
+
+        Returns:
+            bool: 구독 성공 여부.
+        """
         pass
     
     @abstractmethod
     async def disconnect(self):
-        """연결 종료"""
+        """거래소와의 연결을 종료합니다.
+
+        이 메서드는 각 거래소 클라이언트에서 반드시 구현되어야 합니다.
+        """
         pass
     
     @abstractmethod
     def get_supported_symbols(self) -> Set[str]:
-        """지원되는 심볼 목록 반환"""
+        """거래소에서 지원하는 모든 심볼(코인) 목록을 반환합니다.
+
+        이 메서드는 각 거래소 클라이언트에서 반드시 구현되어야 합니다.
+
+        Returns:
+            Set[str]: 지원되는 심볼들의 집합.
+        """
         pass
     
     def get_stats(self) -> Dict[str, Any]:
-        """클라이언트 통계 반환"""
+        """현재 클라이언트의 연결 및 메시지 수신 통계를 반환합니다.
+
+        Returns:
+            Dict[str, Any]: 클라이언트 통계 정보를 담은 딕셔너리.
+                            'exchange', 'is_connected', 'subscribed_symbols_count',
+                            'stats', 'uptime_seconds' 키를 포함합니다.
+        """
         return {
             "exchange": self.exchange_name,
             "is_connected": self.is_connected,
@@ -88,7 +128,11 @@ class ExchangeClient(ABC):
         }
 
 class UpbitClient(ExchangeClient):
-    """업비트 전문 클라이언트"""
+    """업비트 거래소와 상호작용하기 위한 전문 클라이언트입니다.
+
+    ExchangeClient를 상속받아 업비트 WebSocket 및 REST API를 통해
+    데이터를 수집하고 처리하는 기능을 구현합니다.
+    """
     
     def __init__(self):
         super().__init__("upbit")
@@ -108,7 +152,17 @@ class UpbitClient(ExchangeClient):
         self.api_manager.add_validator(self._validate_upbit_data)
     
     def _validate_upbit_data(self, data: Any) -> bool:
-        """업비트 데이터 유효성 검사"""
+        """업비트에서 수신된 데이터의 유효성을 검사합니다.
+
+        데이터가 리스트인 경우 각 항목이 'market'과 'trade_price' 키를 포함하는 딕셔너리인지 확인하고,
+        데이터가 단일 딕셔너리인 경우에도 동일한 키를 포함하는지 확인합니다.
+
+        Args:
+            data (Any): 유효성을 검사할 업비트 데이터.
+
+        Returns:
+            bool: 데이터가 유효하면 True, 그렇지 않으면 False.
+        """
         if isinstance(data, list):
             return all(
                 isinstance(item, dict) and 
@@ -121,7 +175,14 @@ class UpbitClient(ExchangeClient):
         return False
     
     async def connect(self) -> bool:
-        """업비트 WebSocket 연결"""
+        """업비트 WebSocket 서버에 연결을 시도합니다.
+
+        EnhancedWebSocketClient를 사용하여 연결을 설정하고,
+        연결 성공/실패, 메시지 수신, 연결 해제, 오류 발생 시 호출될 콜백 함수를 설정합니다.
+
+        Returns:
+            bool: 연결 성공 여부.
+        """
         try:
             self.connection_stats["connection_attempts"] += 1
             
@@ -160,12 +221,22 @@ class UpbitClient(ExchangeClient):
             return False
     
     async def _on_websocket_connect(self):
-        """WebSocket 연결 성공 시 처리"""
+        """WebSocket 연결 성공 시 호출되는 콜백 함수입니다.
+
+        연결 상태를 로깅하고 마지막 하트비트 시간을 업데이트합니다.
+        """
         logger.info("Upbit WebSocket 연결 성공")
         self.last_heartbeat = time.time()
     
     async def _on_websocket_message(self, data: Union[Dict, List]):
-        """WebSocket 메시지 수신 처리"""
+        """WebSocket 메시지 수신 시 호출되는 콜백 함수입니다.
+
+        수신된 메시지를 처리하고, 티커 데이터인 경우 정규화하여 `on_ticker_data` 콜백을 호출합니다.
+        메시지 수신 통계를 업데이트합니다.
+
+        Args:
+            data (Union[Dict, List]): 수신된 WebSocket 메시지 데이터.
+        """
         try:
             self.connection_stats["messages_received"] += 1
             self.connection_stats["last_message_time"] = time.time()
@@ -187,7 +258,10 @@ class UpbitClient(ExchangeClient):
                 await self.on_error(e)
     
     async def _on_websocket_disconnect(self):
-        """WebSocket 연결 해제 처리"""
+        """WebSocket 연결 해제 시 호출되는 콜백 함수입니다.
+
+        클라이언트의 연결 상태를 업데이트하고 `on_connection_change` 콜백을 호출합니다.
+        """
         self.is_connected = False
         if self.on_connection_change:
             await self.on_connection_change(False)
@@ -200,7 +274,17 @@ class UpbitClient(ExchangeClient):
             await self.on_error(error)
     
     async def subscribe(self, request: SubscriptionRequest) -> bool:
-        """업비트 마켓 구독"""
+        """업비트 마켓 데이터 구독을 요청합니다.
+
+        WebSocket 클라이언트가 연결되어 있지 않거나 실행 중이 아니면 구독할 수 없습니다.
+        요청된 심볼들을 업비트의 'KRW-' 형식으로 변환하여 구독 메시지를 생성하고 전송합니다.
+
+        Args:
+            request (SubscriptionRequest): 구독할 심볼 정보를 담은 객체.
+
+        Returns:
+            bool: 구독 요청 성공 여부.
+        """
         if not self.websocket_client or not self.is_connected:
             return False
         
@@ -237,7 +321,14 @@ class UpbitClient(ExchangeClient):
         self.subscribed_symbols.clear()
     
     def get_supported_symbols(self) -> Set[str]:
-        """업비트 지원 심볼 조회"""
+        """업비트에서 지원하는 모든 KRW 마켓 심볼(코인) 목록을 조회합니다.
+
+        업비트 REST API를 통해 모든 마켓 정보를 가져와 KRW 마켓에 해당하는 심볼만 추출하여 반환합니다.
+
+        Returns:
+            Set[str]: 업비트에서 지원하는 KRW 마켓 심볼들의 집합.
+                      API 호출 실패 시 빈 집합을 반환합니다.
+        """
         try:
             response = self.api_manager.make_sync_request(
                 "GET", "/v1/market/all", timeout=10
@@ -257,7 +348,11 @@ class UpbitClient(ExchangeClient):
         return set()
 
 class BinanceClient(ExchangeClient):
-    """바이낸스 전문 클라이언트"""
+    """바이낸스 거래소와 상호작용하기 위한 전문 클라이언트입니다.
+
+    ExchangeClient를 상속받아 바이낸스 WebSocket 및 REST API를 통해
+    데이터를 수집하고 처리하는 기능을 구현합니다.
+    """
     
     def __init__(self):
         super().__init__("binance")
@@ -280,7 +375,17 @@ class BinanceClient(ExchangeClient):
         self.last_ping = time.time()
         
     def _validate_binance_data(self, data: Any) -> bool:
-        """바이낸스 데이터 유효성 검사"""
+        """바이낸스에서 수신된 데이터의 유효성을 검사합니다.
+
+        데이터가 리스트인 경우 각 항목이 's'(symbol)와 'c'(close price) 키를 포함하는 딕셔너리인지 확인하고,
+        데이터가 단일 딕셔너리인 경우에도 동일한 키를 포함하는지 확인합니다.
+
+        Args:
+            data (Any): 유효성을 검사할 바이낸스 데이터.
+
+        Returns:
+            bool: 데이터가 유효하면 True, 그렇지 않으면 False.
+        """
         if isinstance(data, list):
             return all(
                 isinstance(item, dict) and 
@@ -293,7 +398,15 @@ class BinanceClient(ExchangeClient):
         return False
     
     async def connect(self) -> bool:
-        """바이낸스 WebSocket 연결"""
+        """바이낸스 WebSocket 서버에 연결을 시도합니다.
+
+        EnhancedWebSocketClient를 사용하여 연결을 설정하고,
+        연결 성공/실패, 메시지 수신, 연결 해제, 오류 발생 시 호출될 콜백 함수를 설정합니다.
+        연결 성공 시 하트비트 태스크를 시작합니다.
+
+        Returns:
+            bool: 연결 성공 여부.
+        """
         try:
             self.connection_stats["connection_attempts"] += 1
             
@@ -334,7 +447,11 @@ class BinanceClient(ExchangeClient):
             return False
     
     async def _heartbeat_task(self):
-        """바이낸스 하트비트 관리"""
+        """바이낸스 WebSocket 연결의 하트비트를 관리합니다.
+
+        연결이 활성 상태인 동안 주기적으로 하트비트 간격을 확인하고,
+        필요한 경우 연결 상태를 갱신합니다. 바이낸스는 ping/pong을 자동으로 처리합니다.
+        """
         while self.is_connected:
             try:
                 current_time = time.time()
@@ -355,12 +472,22 @@ class BinanceClient(ExchangeClient):
                 break
     
     async def _on_websocket_connect(self):
-        """WebSocket 연결 성공 시 처리"""
+        """WebSocket 연결 성공 시 호출되는 콜백 함수입니다.
+
+        연결 상태를 로깅하고 마지막 하트비트 시간을 업데이트합니다.
+        """
         logger.info("Binance WebSocket 연결 성공")
         self.last_heartbeat = time.time()
     
     async def _on_websocket_message(self, data: Union[Dict, List]):
-        """WebSocket 메시지 수신 처리 (바이낸스는 배열로 전송)"""
+        """WebSocket 메시지 수신 시 호출되는 콜백 함수입니다.
+
+        수신된 메시지를 처리하고, 티커 데이터인 경우 정규화하여 `on_ticker_data` 콜백을 호출합니다。
+        메시지 수신 통계를 업데이트합니다. 바이낸스는 메시지를 배열 형태로 전송할 수 있습니다.
+
+        Args:
+            data (Union[Dict, List]): 수신된 WebSocket 메시지 데이터.
+        """
         try:
             self.connection_stats["messages_received"] += 1
             self.connection_stats["last_message_time"] = time.time()
@@ -385,7 +512,10 @@ class BinanceClient(ExchangeClient):
                 await self.on_error(e)
     
     async def _on_websocket_disconnect(self):
-        """WebSocket 연결 해제 처리"""
+        """WebSocket 연결 해제 시 호출되는 콜백 함수입니다.
+
+        클라이언트의 연결 상태를 업데이트하고 `on_connection_change` 콜백을 호출합니다.
+        """
         self.is_connected = False
         if self.on_connection_change:
             await self.on_connection_change(False)
@@ -398,7 +528,17 @@ class BinanceClient(ExchangeClient):
             await self.on_error(error)
     
     async def subscribe(self, request: SubscriptionRequest) -> bool:
-        """바이낸스 구독 (전체 티커 스트림 사용)"""
+        """바이낸스 마켓 데이터 구독을 요청합니다.
+
+        바이낸스는 일반적으로 전체 티커 스트림을 제공하므로, 별도의 구독 메시지 전송 없이
+        내부적으로 구독 심볼 목록을 업데이트하고 필터링 방식으로 데이터를 처리합니다.
+
+        Args:
+            request (SubscriptionRequest): 구독할 심볼 정보를 담은 객체.
+
+        Returns:
+            bool: 항상 True를 반환하며, 실제 구독은 내부 필터링으로 처리됩니다.
+        """
         # 바이낸스는 !ticker@arr로 모든 티커를 받으므로 별도 구독 불필요
         self.subscribed_symbols.update(request.symbols)
         logger.info(f"Binance {len(request.symbols)}개 심볼 구독 설정 (필터링 방식)")
@@ -412,7 +552,15 @@ class BinanceClient(ExchangeClient):
         self.subscribed_symbols.clear()
     
     def get_supported_symbols(self) -> Set[str]:
-        """바이낸스 지원 심볼 조회"""
+        """바이낸스에서 지원하는 모든 USDT 페어 심볼(코인) 목록을 조회합니다.
+
+        바이낸스 REST API를 통해 모든 거래소 정보를 가져와 USDT로 끝나는 심볼 중
+        'TRADING' 상태인 심볼만 추출하여 반환합니다.
+
+        Returns:
+            Set[str]: 바이낸스에서 지원하는 USDT 페어 심볼들의 집합.
+                      API 호출 실패 시 빈 집합을 반환합니다.
+        """
         try:
             response = self.api_manager.make_sync_request(
                 "GET", "/api/v3/exchangeInfo", timeout=10
@@ -432,7 +580,11 @@ class BinanceClient(ExchangeClient):
         return set()
 
 class BybitClient(ExchangeClient):
-    """바이비트 전문 클라이언트"""
+    """바이비트 거래소와 상호작용하기 위한 전문 클라이언트입니다。
+
+    ExchangeClient를 상속받아 바이비트 WebSocket 및 REST API를 통해
+    데이터를 수집하고 처리하는 기능을 구현합니다。
+    """
     
     def __init__(self):
         super().__init__("bybit")
@@ -454,7 +606,17 @@ class BybitClient(ExchangeClient):
         self.req_id = 0
         
     def _validate_bybit_data(self, data: Any) -> bool:
-        """바이비트 데이터 유효성 검사"""
+        """바이비트에서 수신된 데이터의 유효성을 검사합니다.
+
+        데이터가 딕셔너리인 경우 'topic' 키를 포함하거나,
+        'data' 키를 포함하고 그 값이 딕셔너리 또는 리스트인지 확인합니다.
+
+        Args:
+            data (Any): 유효성을 검사할 바이비트 데이터.
+
+        Returns:
+            bool: 데이터가 유효하면 True, 그렇지 않으면 False.
+        """
         if isinstance(data, dict):
             # 바이비트 WebSocket 응답 구조 확인
             return (
@@ -464,7 +626,15 @@ class BybitClient(ExchangeClient):
         return False
     
     async def connect(self) -> bool:
-        """바이비트 WebSocket 연결"""
+        """바이비트 WebSocket 서버에 연결을 시도합니다.
+
+        EnhancedWebSocketClient를 사용하여 연결을 설정하고,
+        연결 성공/실패, 메시지 수신, 연결 해제, 오류 발생 시 호출될 콜백 함수를 설정합니다.
+        연결 성공 시 하트비트 태스크를 시작합니다.
+
+        Returns:
+            bool: 연결 성공 여부.
+        """
         try:
             self.connection_stats["connection_attempts"] += 1
             
@@ -504,7 +674,11 @@ class BybitClient(ExchangeClient):
             return False
     
     async def _heartbeat_task(self):
-        """바이비트 하트비트"""
+        """바이비트 WebSocket 연결의 하트비트를 관리합니다.
+
+        연결이 활성 상태인 동안 주기적으로 ping 메시지를 전송하여 연결을 유지합니다.
+        하트비트 간격은 거래소 사양에 따르거나 기본값(10초)을 사용합니다.
+        """
         while self.is_connected:
             try:
                 # 바이비트는 ping 메시지 전송 필요
@@ -523,12 +697,22 @@ class BybitClient(ExchangeClient):
                 break
     
     async def _on_websocket_connect(self):
-        """WebSocket 연결 성공 시 처리"""
+        """WebSocket 연결 성공 시 호출되는 콜백 함수입니다.
+
+        연결 상태를 로깅하고 마지막 하트비트 시간을 업데이트합니다.
+        """
         logger.info("Bybit WebSocket 연결 성공")
         self.last_heartbeat = time.time()
     
     async def _on_websocket_message(self, data: Union[Dict, List]):
-        """WebSocket 메시지 수신 처리"""
+        """WebSocket 메시지 수신 시 호출되는 콜백 함수입니다.
+
+        수신된 메시지를 처리하고, 티커 데이터인 경우 정규화하여 `on_ticker_data` 콜백을 호출합니다。
+        메시지 수신 통계를 업데이트합니다. Pong 메시지는 무시합니다.
+
+        Args:
+            data (Union[Dict, List]): 수신된 WebSocket 메시지 데이터.
+        """
         try:
             self.connection_stats["messages_received"] += 1
             self.connection_stats["last_message_time"] = time.time()
@@ -559,7 +743,10 @@ class BybitClient(ExchangeClient):
                 await self.on_error(e)
     
     async def _on_websocket_disconnect(self):
-        """WebSocket 연결 해제 처리"""
+        """WebSocket 연결 해제 시 호출되는 콜백 함수입니다.
+
+        클라이언트의 연결 상태를 업데이트하고 `on_connection_change` 콜백을 호출합니다.
+        """
         self.is_connected = False
         if self.on_connection_change:
             await self.on_connection_change(False)
