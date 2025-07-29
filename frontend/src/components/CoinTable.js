@@ -57,7 +57,6 @@ const CoinRow = ({ coin, index, getCoinName, formatPrice, formatVolume, exchange
             price={coin.domestic_price}
             currency="₩" 
             formatPrice={formatPrice}
-            key={`domestic-${coin.symbol}`}
           />
         </span>
         <span className="text-gray-400">
@@ -65,7 +64,6 @@ const CoinRow = ({ coin, index, getCoinName, formatPrice, formatVolume, exchange
             price={coin.global_price}
             currency="$" 
             formatPrice={formatPrice}
-            key={`global-${coin.symbol}`}
           />
         </span>
       </div>
@@ -74,7 +72,6 @@ const CoinRow = ({ coin, index, getCoinName, formatPrice, formatVolume, exchange
       <div className="col-span-2 flex flex-col items-end">
         <PremiumCell 
           premium={coin.premium}
-          key={`premium-${coin.symbol}`} 
         />
       </div>
 

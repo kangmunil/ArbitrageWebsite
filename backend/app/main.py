@@ -140,7 +140,9 @@ async def price_aggregator():
                 "usdt_krw_rate": usdt_krw_rate,
             }
             
-            all_coins_data.append(coin_data)
+            # 최소한 하나의 거래소라도 가격 데이터가 있는 경우에만 추가
+            if upbit_price is not None or bithumb_price is not None or binance_price is not None or bybit_price is not None:
+                all_coins_data.append(coin_data)
 
 
         if all_coins_data:

@@ -1,53 +1,49 @@
-import React, { useState, useEffect, useRef } from 'react';
+// frontend/src/components/PriceCell.js
+import React, { useState, useEffect, useRef, memo } from 'react';
 import './PriceCell.css';
 
-// Helper to format the price
-const formatPrice = (price) => {
-  if (price === null || price === undefined || isNaN(price)) {
-    return '-';
-  }
-  const options = {
-    maximumFractionDigits: price < 10 ? 4 : (price < 100 ? 2 : 0),
-  };
-  return price.toLocaleString('en-US', options);
-};
-
-const PriceCell = ({ price, currency }) => {
-  // State to manage the animation CSS class
-  const [animationClass, setAnimationClass] = useState('');
-  // Ref to store the previous price to detect changes
-  const prevPriceRef = useRef(price); // Initialize with current price
+const PriceCell = ({ price, currency, formatPrice }) => {
+  // 이전 가격을 기억하기 위한 ref
+  const prevPriceRef = useRef(price);
+  // 깜빡임 효과를 위한 CSS 클래스를 관리하는 state
+  const [flashClass, setFlashClass] = useState('');
 
   useEffect(() => {
-    console.log(`[PriceCell] ${currency} 가격 변화 감지: ${prevPriceRef.current} -> ${price}`); // 디버깅 로그 추가
-    // Only run if price has actually changed
-    if (price !== prevPriceRef.current) {
-      // Determine animation direction
-      const animation = price > prevPriceRef.current ? 'price-up' : 'price-down';
-      setAnimationClass(animation);
-
-      // After the animation duration, remove the class so it can be re-triggered
-      const timer = setTimeout(() => {
-        setAnimationClass('');
-      }, 300); // This duration must match the CSS animation duration
-
-      // Update the ref with the new price for the next render cycle
-      prevPriceRef.current = price; // Update ref for next comparison
-
-      // Cleanup timer on component unmount or if effect re-runs
-      return () => clearTimeout(timer);
+    // 컴포넌트가 처음 마운트될 때 prevPriceRef.current를 초기 price로 설정
+    // 이렇게 하면 첫 렌더링 시에는 애니메이션이 발생하지 않음
+    if (prevPriceRef.current === undefined) {
+      prevPriceRef.current = price;
+      return; // 첫 렌더링에서는 애니메이션 스킵
     }
-  }, [price]); // Dependency on 'price' prop
 
-  // Render the current 'price' prop directly, and apply animation class
+    const prevPrice = prevPriceRef.current;
+
+    // 이전 가격과 현재 가격을 비교하여 CSS 클래스 설정
+    // price가 null이 아닌 경우에만 비교 및 애니메이션 적용
+    if (price !== null && prevPrice !== null && price !== prevPrice) {
+      if (price > prevPrice) {
+        setFlashClass('flash-up'); // 가격 상승
+      } else if (price < prevPrice) {
+        setFlashClass('flash-down'); // 가격 하락
+      }
+      // 0.5초 후에 깜빡임 효과 클래스를 제거
+      const timer = setTimeout(() => {
+        setFlashClass('');
+      }, 500);
+      return () => clearTimeout(timer); // 타이머 정리
+    }
+
+    // 다음 비교를 위해 현재 가격을 ref에 저장 (null 값도 저장하여 다음 비교에 사용)
+    prevPriceRef.current = price;
+
+  }, [price]); // 'price' prop이 변경될 때마다 이 effect를 실행
+
   return (
-    <td className={`price-cell ${animationClass}`}>
-      <span className="currency">{currency}</span>
-      {/* Step 8 (part 2): The new price is displayed on screen directly from the prop */}
-      <span className="price">{formatPrice(price)}</span> {/* Directly use 'price' prop */}
-    </td>
+    // 적용된 flashClass에 따라 배경색이 변함
+    <span className={`price-cell ${flashClass}`}>
+      {formatPrice(price, currency)}
+    </span>
   );
 };
 
-// Removed React.memo temporarily for debugging, can add back later if it works
-export default PriceCell;
+export default memo(PriceCell);
