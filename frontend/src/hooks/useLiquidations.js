@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
-import useWebSocket from './useWebSocketOptimized';
+import { useWebSocket, WS_STATUS } from './useWebSocketManager';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -14,8 +14,12 @@ export const useLiquidations = (windowMin = 5) => {
   const cacheRef = useRef(null);
   const intervalRef = useRef(null);
 
-  const liquidationWsEndpoint = 'ws://localhost:8000/ws/liquidations';
-  const { data: wsData } = useWebSocket([liquidationWsEndpoint]);
+  // 통합 WebSocket 매니저 사용 - 중복 연결 방지
+  const liquidationWs = useWebSocket('/ws/liquidations', {
+    reconnectAttempts: 2,
+    reconnectInterval: 15000, // 15초로 증가
+    enableLogging: false
+  });
 
   const fetchData = useCallback(async () => {
     try {
@@ -80,11 +84,12 @@ export const useLiquidations = (windowMin = 5) => {
   }, [fetchData]);
 
   useEffect(() => {
-    if (wsData[liquidationWsEndpoint]) {
-      // Trigger a refetch when new WebSocket data arrives
+    // 통합 WebSocket 매니저의 데이터 처리
+    if (liquidationWs.data && liquidationWs.status === WS_STATUS.CONNECTED) {
+      // WebSocket 데이터 수신 시 새로운 데이터 가져오기
       fetchData();
     }
-  }, [wsData, fetchData, liquidationWsEndpoint]);
+  }, [liquidationWs.data, liquidationWs.status, fetchData]);
 
   return { summary, trend, loading, error, refetch: fetchData, lastUpdate };
 };

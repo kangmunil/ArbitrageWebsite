@@ -28,83 +28,227 @@ This is a cryptocurrency arbitrage monitoring website that displays price differ
 
 ## Architecture
 
-### Backend Structure
-- **FastAPI application** with WebSocket support for real-time price updates
-- **SQLAlchemy ORM** with MySQL database (models: Exchange, Cryptocurrency, CoinPrice, PremiumHistory)
-- **Real-time price fetching** from multiple exchanges via REST APIs
-- **WebSocket connection manager** for broadcasting price updates to connected clients
-- **Background task** (`price_updater`) runs every 1 second to fetch and broadcast prices
+### Microservices Backend Structure
+이 프로젝트는 **마이크로서비스 아키텍처**로 구성되어 있습니다:
 
-### Key Backend Components
-- `main.py`: FastAPI app, WebSocket endpoints, and background price updater
-- `services.py`: Exchange API integrations (Upbit, Binance, Bithumb, Bybit, etc.)
-- `liquidation_services.py`: Real-time liquidation data collection from multiple exchanges
-- `models.py`: SQLAlchemy database models
-- `schemas.py`: Pydantic data schemas for API request/response validation
-- `database.py`: Database connection and session management
-- `create_db_tables.py`: Database table creation script
-- `seed.py`: Database seeding script
+#### 🎯 API Gateway (Port 8000)
+- **FastAPI 기반 메인 API 서버** - 프론트엔드의 진입점
+- **데이터 집계 및 브로드캐스팅** - 다른 서비스들의 데이터를 통합
+- **WebSocket 엔드포인트** - 실시간 가격/청산 데이터 스트리밍 
+- **SQLAlchemy ORM** - MySQL 데이터베이스 연결 및 코인명 관리
 
-### Frontend Structure  
+#### 📊 Market Data Service (Port 8001) 
+- **전담 시세 데이터 수집 서비스** - 거래소별 가격, 거래량, 환율 수집
+- **WebSocket 클라이언트들** - Upbit, Binance, Bybit 실시간 연결
+- **REST API 클라이언트** - Bithumb 데이터 수집
+- **Redis 캐싱** - 실시간 데이터 저장 및 공유
+
+#### ⚡ Liquidation Service (Port 8002)
+- **청산 데이터 전담 서비스** - 다중 거래소 청산 데이터 수집 및 처리
+- **실시간 WebSocket 수집** - Binance 청산 데이터 + 기타 거래소 시뮬레이션
+- **메모리 기반 저장** - 24시간 청산 데이터 보관
+- **통계 집계** - 1분 단위 청산 통계 생성
+
+#### 🗄️ Shared Modules
+- **`shared/websocket_manager.py`** - 공통 WebSocket 연결 관리
+- **`shared/data_validator.py`** - 데이터 검증 및 정규화 로직
+- **`shared/health_checker.py`** - 표준화된 헬스체크 시스템  
+- **`shared/redis_manager.py`** - Redis 연결 및 작업 관리
+
+### Frontend Structure (최적화된 아키텍처)
 - **React 18** with functional components and hooks
-- **WebSocket client** connects to backend for real-time price updates
-- **Chart.js** for price charts and gauges
-- **Axios** for REST API calls
+- **모듈화된 아키텍처**: 공통 유틸리티와 재사용 가능한 컴포넌트
+- **통합 WebSocket 관리**: 자동 재연결 지원하는 중앙화된 WebSocket 매니저
+- **표준화된 API 클라이언트**: 오류 처리, 재시도, 캐싱 지원
+- **성능 최적화**: 메모이제이션과 효율적인 리렌더링
 
-### Key Frontend Components
-- `CoinTable.js`: Main price comparison table with **12-column Tailwind CSS grid layout**
-- `PriceChart.js`: Bitcoin historical price chart using Binance API
-- `FearGreedIndex.js`: Crypto Fear & Greed Index gauge
-- `LiquidationChart.js`: Real-time liquidation data visualization
-- `PriceDisplay.js`: Price display component
-- `Header.js`: Application header and navigation
-- `Header.css`: Header component styling
+### 새로운 Frontend 디렉토리 구조
+```
+frontend/src/
+├── styles/
+│   └── common.css              # 🆕 통합 CSS 변수 및 공통 스타일
+├── utils/
+│   ├── formatters.js           # 🆕 데이터 포맷팅 유틸리티 (가격, 거래량, 프리미엄)
+│   ├── apiClient.js            # 🆕 표준화된 API 클라이언트 (재시도, 캐싱, 오류처리)
+│   ├── cacheManager.js         # 브라우저 캐싱 전략 관리
+│   ├── dataOptimization.js     # 데이터 처리 최적화
+│   └── performanceMonitor.js   # 성능 모니터링
+├── hooks/
+│   ├── useWebSocketManager.js  # 🆕 통합 WebSocket 관리 (자동 재연결, 상태 관리)
+│   ├── usePriceData.js         # ✨ 최적화됨 (통합 매니저 사용)
+│   ├── useLiquidations.js      # 청산 데이터 관리
+│   └── useWebSocketOptimized.js # 레거시 (향후 제거 예정)
+└── components/
+    ├── PriceCell.js            # ✨ 간단한 색상 변경으로 최적화
+    ├── PremiumCell.js          # ✨ 애니메이션 제거, 통합 포맷터 사용
+    ├── CoinTable.js            # 메인 가격 비교 테이블
+    ├── Header.js               # 애플리케이션 헤더
+    ├── FearGreedIndex.js       # 공포탐욕지수 게이지
+    ├── LiquidationChart.js     # 청산 데이터 시각화
+    └── SidebarLiquidations.js  # 사이드바 청산 위젯
+```
 
-#### Frontend UI Architecture Details
+### 핵심 Frontend 최적화 사항
 
-**CoinTable Grid Layout** (`CoinTable.js`):
-- **Grid System**: Tailwind CSS 12-column responsive grid (`grid-cols-12`)
-- **Column Distribution**: name(3), price(3), premium(2), change(2), volume(2)
-- **Price Formatting**: Dynamic decimal places based on price magnitude:
+#### 🔧 **통합 유틸리티 시스템**
+- **`formatters.js`**: 모든 데이터 포맷팅 로직 중앙화
   ```javascript
-  const formatPrice = (price, currency = '₩') => {
-    if (price < 0.01) return `${currency}${price.toFixed(6)}`;      // 소수 6자리
-    if (price < 1) return `${currency}${price.toFixed(4)}`;         // 소수 4자리  
-    if (price < 100) return `${currency}${price.toFixed(2)}`;       // 소수 2자리
-    return `${currency}${Math.round(price).toLocaleString()}`;      // 정수 + 천단위
+  // 동적 소수점 가격 포맷팅
+  export const formatPrice = (price, currency = '₩') => {
+    if (price < 0.01) return `${currency}${price.toFixed(6)}`;      // SHIB, BONK 등
+    if (price < 1) return `${currency}${price.toFixed(4)}`;         // 소액 코인  
+    if (price < 100) return `${currency}${price.toFixed(2)}`;       // 일반 코인
+    return `${currency}${Math.round(price).toLocaleString()}`;      // BTC 등 고액
+  };
+  
+  // 거래량 포맷팅 (KRW: 억원, USD: M 단위)
+  export const formatVolume = (volume, currency = 'KRW') => {
+    return currency === 'KRW' 
+      ? `${(volume / 100_000_000).toFixed(0)}억원`
+      : `$${(volume / 1_000_000).toFixed(1)}M`;
   };
   ```
-- **Volume Display**: KRW amounts in 억원 units, USD in M(million) units
-- **Real-time Updates**: WebSocket-driven state updates with timestamp display
 
-### Detailed Data Flow Architecture
+- **`apiClient.js`**: 표준화된 API 호출 인터페이스
+  ```javascript
+  // 캐시 지원 API 호출
+  export const coinApi = {
+    getLatest: (useCache = true) => apiGetCached('/api/coins/latest', { ttl: 1000 }),
+    getNames: (useCache = true) => apiGetCached('/api/coin-names', { ttl: 10 * 60 * 1000 })
+  };
+  
+  // 자동 재시도 및 오류 처리
+  const fetchWithRetry = async (url, options, retryCount = 3);
+  ```
 
-#### 1. Real-Time Price Data Flow
+#### 🔄 **통합 WebSocket 관리시스템**
+- **`useWebSocketManager.js`**: 모든 WebSocket 연결 중앙 관리
+  ```javascript
+  // 자동 재연결, 상태 모니터링, ping/pong 지원
+  export const useWebSocket = (endpoint, options = {}) => {
+    // 연결 상태: connecting, connected, disconnected, error, reconnecting
+    // 자동 재시도: 지수적 백오프로 최대 5회 시도
+    // Ping/Pong: 30초마다 연결 상태 확인
+  };
+  
+  // 다중 WebSocket 연결 관리
+  export const useMultipleWebSockets = (endpoints, options);
+  ```
+
+#### 🎨 **통합 CSS 디자인 시스템**
+- **`styles/common.css`**: CSS 변수 기반 일관된 스타일
+  ```css
+  :root {
+    /* 색상 시스템 */
+    --bg-primary: #282c34;
+    --bg-secondary: #1a1a1a;
+    --text-primary: white;
+    --text-secondary: #61dafb;
+    
+    /* 상태 색상 */
+    --price-up: #22c55e;      /* 상승: 초록색 */
+    --price-down: #ef4444;    /* 하락: 빨간색 */
+    --premium-positive: #d9534f;
+    --premium-negative: #5cb85c;
+    
+    /* 크기 및 간격 */
+    --header-height: 60px;
+    --sidebar-width: 360px;
+    --spacing-md: 20px;
+    --border-radius: 8px;
+  }
+  ```
+
+#### ⚡ **성능 최적화된 컴포넌트**
+- **간단한 가격 변동 표시**: 복잡한 애니메이션 제거, 색상 변경만 유지
+  ```javascript
+  // PriceCell.js - 최적화됨
+  const PriceCell = ({ price, currency = '₩' }) => {
+    const prevPriceRef = useRef(price);
+    
+    const getPriceChangeClass = () => {
+      const prevPrice = prevPriceRef.current;
+      if (price > prevPrice) return 'price-up';    // 초록색
+      if (price < prevPrice) return 'price-down';  // 빨간색
+      return '';
+    };
+    
+    return (
+      <span className={`price-cell ${getPriceChangeClass()}`}>
+        {formatPrice(price, currency)}
+      </span>
+    );
+  };
+  ```
+
+#### 📊 **실시간 데이터 플로우 (최적화됨)**
 ```
-External APIs → Backend Services → Background Task → WebSocket → Frontend
+WebSocket Manager → 통합 Hook → 메모이제이션 → 최적화된 컴포넌트 → UI 렌더링
 ```
 
-**Price Update Process (`main.py`)**:
-1. **WebSocket Clients** continuously stream real-time data:
-   - **Upbit WebSocket**: `wss://api.upbit.com/websocket/v1` - KRW market tickers
-   - **Binance WebSocket**: `wss://stream.binance.com:9443/ws/!ticker@arr` - USDT market tickers  
-   - **Bybit WebSocket**: `wss://stream.bybit.com/v5/public/spot` - USDT market tickers
-2. **Shared Data Store** (`services.py`): Central memory store updated by WebSocket clients:
-   ```python
-   shared_data = {
-       "upbit_tickers": {},    # Real-time Upbit data
-       "binance_tickers": {},  # Real-time Binance data  
-       "bybit_tickers": {},    # Real-time Bybit data
-       "exchange_rate": None,  # USD/KRW from Naver Finance
-       "usdt_krw_rate": None,  # USDT/KRW from Upbit API
-   }
+**최적화된 데이터 처리**:
+1. **WebSocket 매니저**: 자동 재연결, 상태 관리, 오류 처리
+2. **usePriceData Hook**: 표준화된 API 클라이언트와 통합
+3. **포맷터 사용**: 일관된 데이터 표시 형식
+4. **간단한 색상 변경**: 성능 친화적인 시각적 피드백
+5. **메모이제이션**: React.memo로 불필요한 리렌더링 방지
+
+### 통합 데이터 플로우 아키텍처 (Full-Stack 최적화)
+
+#### 1. **End-to-End 데이터 플로우**
+```
+거래소 APIs → Market Data Service → Redis Cache → API Gateway → 
+통합 WebSocket Manager → 최적화된 Frontend Hook → 메모이제이션된 컴포넌트 → UI
+```
+
+#### 2. **백엔드 마이크로서비스 데이터 처리**
+1. **Market Data Service** (`market-data-service/main.py`):
+   - **실시간 데이터 수집**: Upbit, Binance, Bybit WebSocket + Bithumb REST
+   - **데이터 정규화**: `shared/data_validator.py`로 표준화된 형식 변환
+   - **Redis 캐싱**: 표준화된 데이터를 Redis에 저장 (5분 TTL)
+
+2. **API Gateway** (`app/main.py`):
+   - **데이터 집계**: Market Data Service에서 통합 데이터 수집
+   - **김치 프리미엄 계산**: 실시간 환율 적용한 프리미엄 계산
+   - **WebSocket 브로드캐스팅**: `shared/websocket_manager.py` 사용
+
+#### 3. **최적화된 프론트엔드 데이터 처리**
+1. **통합 WebSocket Hook** (`useWebSocketManager.js`):
+   ```javascript
+   // 자동 재연결, 상태 관리, 오류 처리
+   const priceWs = useWebSocket('/ws/prices', {
+     reconnectAttempts: 3,
+     reconnectInterval: 2000,
+     enableLogging: true
+   });
    ```
-3. **Price Aggregator** (`main.py:price_aggregator()`): 
-   - Combines shared_data into unified coin objects every 1 second
-   - Calculates Kimchi Premium: `((upbit_price - binance_price_krw) / binance_price_krw) * 100`
-   - **Volume Unit Consistency**: Converts all volumes to KRW trading amounts
-4. **WebSocket Broadcasting**: `ConnectionManager` broadcasts JSON array to all clients
-5. **Frontend Reception**: `App.js` receives updates → `allCoinsData` state → `CoinTable.js` renders
+
+2. **표준화된 API 클라이언트** (`apiClient.js`):
+   ```javascript
+   // 캐시 지원, 재시도 로직, 표준화된 오류 처리
+   const result = await coinApi.getLatest(false);
+   ```
+
+3. **통합 데이터 포맷팅** (`formatters.js`):
+   ```javascript
+   // 모든 컴포넌트에서 일관된 포맷팅 사용
+   {formatPrice(coin.upbit_price)} / {formatVolume(coin.volume, 'KRW')}
+   ```
+
+4. **성능 최적화된 컴포넌트**:
+   ```javascript
+   // React.memo + 간단한 색상 변경
+   const PriceCell = memo(({ price, currency }) => (
+     <span className={`price-cell ${getPriceChangeClass()}`}>
+       {formatPrice(price, currency)}
+     </span>
+   ));
+   ```
+
+#### 4. **실시간 성능 최적화 전략**
+- **백엔드**: Redis 캐싱 + 공통 검증 모듈 + 표준화된 WebSocket 관리
+- **프론트엔드**: 메모이제이션 + 통합 포맷터 + 간단한 시각적 피드백
+- **통신**: 자동 재연결 + 오류 복구 + 상태 모니터링
 
 #### 1.1. Critical Volume Data Architecture (Fixed)
 
@@ -140,22 +284,28 @@ ${(coin.global_volume / 1_000_000).toFixed(1)}M
 4. **Frontend State Check**: Confirmed volume data propagates through React state
 5. **UI Display Verification**: Ensured proper volume formatting and unit display
 
-#### 2. Liquidation Data Flow
+#### 2. Liquidation Data Flow (Microservices)
 ```
-Exchange WebSockets → Liquidation Collector → Memory Storage → API/WebSocket → Frontend
+Exchange WebSockets → Liquidation Service → Memory Storage → API Gateway → WebSocket → Frontend
 ```
 
-**Liquidation Collection Process (`liquidation_services.py`)**:
-1. `LiquidationDataCollector` manages multiple exchange connections:
-   - **Binance**: Real WebSocket to `wss://fstream.binance.com/ws/!forceOrder@arr`
-   - **Other Exchanges**: Simulation data (Bybit, OKX, BitMEX, Bitget, Hyperliquid)
-2. Data aggregated in 1-minute buckets with 24-hour memory retention
-3. Long/short position tracking with volume calculations
-4. **REST API**: `/api/liquidations/aggregated` provides historical aggregation
-5. **WebSocket**: `/ws/liquidations` streams real-time updates
-6. Frontend components:
-   - `SidebarLiquidations.js`: Exchange summary with 5-minute trend charts
-   - `LiquidationChart.js`: Detailed stream view + timeline charts
+**New Microservices Liquidation Process**:
+1. **Liquidation Service** (`liquidation_service/main.py`):
+   - **Independent Service**: 포트 8002에서 독립 실행
+   - **Real Binance WebSocket**: `wss://fstream.binance.com/ws/!forceOrder@arr`
+   - **Simulation Exchanges**: Bybit, OKX, BitMEX, Bitget, Hyperliquid
+   - **Data Normalization**: `shared/data_validator.py`의 `LiquidationDataNormalizer` 사용
+   - **Memory Storage**: 24시간 메모리 기반 데이터 보관
+
+2. **API Gateway Integration**:
+   - **Service Communication**: HTTP로 Liquidation Service 데이터 가져오기
+   - **WebSocket Proxy**: `/ws/liquidations` 엔드포인트로 실시간 브로드캐스트
+   - **Health Monitoring**: 청산 서비스 상태 모니터링
+
+3. **Service Endpoints**:
+   - **Liquidation Service**: `GET /api/liquidations/aggregated` (직접 접근)
+   - **API Gateway**: `GET /api/liquidations/aggregated` (프록시)
+   - **WebSocket**: `ws://localhost:8000/ws/liquidations` (프론트엔드 접근)
 
 #### 3. Frontend Real-Time Processing
 **WebSocket Connections (`App.js`)**:
@@ -179,34 +329,50 @@ Exchange WebSockets → Liquidation Collector → Memory Storage → API/WebSock
 
 ## Project Structure
 
-### Complete Directory Layout
+### Complete Microservices Directory Layout
 ```
 ArbitrageWebsite/
-├── docker-compose.yml                         # Docker orchestration (3-service: backend, frontend, db)
+├── docker-compose.yml                         # Docker orchestration (5-service: frontend, api-gateway, market-service, liquidation-service, db, redis)
+├── docker-compose-legacy.yml                 # Backup of original monolithic structure
 ├── CLAUDE.md                                  # Project instructions for Claude Code
-├── AGENTS.md                                  # Additional documentation  
-├── GEMINI.md                                  # Korean documentation for Gemini
+├── MICROSERVICES_GUIDE.md                    # Microservices 실행 및 디버깅 가이드
 ├── README.md                                  # Basic project description
 │
-├── backend/                                   # FastAPI Backend (Integrated Service)
-│   ├── Dockerfile                             # Backend container configuration
+├── backend/                                   # Microservices Backend
+│   ├── Dockerfile                             # API Gateway container configuration
 │   ├── requirements.txt                       # Python dependencies
-│   ├── venv/                                  # Python virtual environment  
 │   ├── data/                                  # CSV data files for seeding
 │   │   ├── exchanges.csv                      # Exchange information
 │   │   └── cryptocurrencies.csv               # Cryptocurrency metadata
-│   └── app/                                   # Main Backend Service (Port 8000)
-│       ├── main.py                            # FastAPI app with WebSocket support
-│       ├── database.py                        # Database connection management
-│       ├── models.py                          # SQLAlchemy database models
-│       ├── schemas.py                         # Pydantic data schemas
-│       ├── services.py                        # External API integrations
-│       ├── liquidation_services.py            # Real-time liquidation data collection
-│       ├── enhanced_websocket.py              # Enhanced WebSocket client
-│       ├── create_db_tables.py                # Database table creation script
-│       └── seed.py                            # Database seeding script
+│   │
+│   ├── shared/                                # 공통 모듈 (새로 추가)
+│   │   ├── websocket_manager.py               # 공통 WebSocket 연결 관리
+│   │   ├── data_validator.py                  # 데이터 검증 및 정규화 로직
+│   │   ├── health_checker.py                  # 표준화된 헬스체크 시스템
+│   │   └── redis_manager.py                   # Redis 연결 및 작업 관리
+│   │
+│   ├── app/                                   # API Gateway Service (Port 8000)
+│   │   ├── main.py                            # FastAPI Gateway - 데이터 집계 및 WebSocket
+│   │   ├── aggregator.py                      # 서비스 간 데이터 집계 로직
+│   │   ├── database.py                        # Database connection management
+│   │   ├── models.py                          # SQLAlchemy database models
+│   │   ├── schemas.py                         # Pydantic data schemas
+│   │   ├── create_db_tables.py                # Database table creation script
+│   │   └── seed.py                            # Database seeding script
+│   │
+│   ├── market-data-service/                   # Market Data Service (Port 8001) - 새로 추가
+│   │   ├── Dockerfile                         # Market service container
+│   │   ├── main.py                            # FastAPI 시장 데이터 서비스
+│   │   ├── market_collector.py                # 거래소별 데이터 수집 로직
+│   │   └── shared_data.py                     # 시장 데이터 공유 저장소
+│   │
+│   └── liquidation_service/                   # Liquidation Service (Port 8002) - 확장됨
+│       ├── Dockerfile                         # Liquidation service container  
+│       ├── main.py                            # FastAPI 청산 데이터 서비스
+│       ├── liquidation_stats_collector.py     # 청산 통계 수집기
+│       └── liquidation_collector_legacy.py    # 레거시 청산 수집기
 │
-└── frontend/                                  # React Frontend
+└── frontend/                                  # React Frontend (변경 없음)
     ├── Dockerfile                             # Frontend container configuration
     ├── package.json                           # Node.js dependencies and scripts
     ├── package-lock.json                      # Dependency lock file
@@ -238,30 +404,62 @@ ArbitrageWebsite/
             └── dataOptimization.js            # Data processing optimizations
 ```
 
-### Key Components Detail
+### Key Microservices Components Detail
 
-#### Backend Components
-- **`liquidation_services.py`**: Real-time liquidation data collection from multiple exchanges via WebSocket
-- **WebSocket endpoints**: `/ws/prices` (price data) and `/ws/liquidations` (liquidation data)
-- **ConnectionManager class**: Manages WebSocket connections and broadcasts
+#### 🎯 API Gateway Components (`app/`)
+- **`main.py`**: FastAPI Gateway - 프론트엔드 진입점, WebSocket 브로드캐스팅
+- **`aggregator.py`**: MarketDataAggregator - 다른 서비스들의 데이터 통합
+- **WebSocket Endpoints**: `/ws/prices`, `/ws/liquidations` (공통 모듈 사용)
+- **Database Integration**: 코인 한글명 등 메타데이터 관리
 
-#### Frontend Components  
-- **`SidebarLiquidations.js`**: 320px sidebar widget for real-time liquidation summary with 5-minute trend charts
-- **`LiquidationChart.js`**: Detailed liquidation visualization with stream view and timeline charts  
-- **`useLiquidations.js`**: Custom hook managing liquidation WebSocket connections and data normalization
-- **WebSocket connections**: Connects to both `/ws/prices` and `/ws/liquidations` endpoints
-- **Exchange selection**: Dropdown filters for domestic vs global exchanges
+#### 📊 Market Data Service Components (`market-data-service/`)
+- **`main.py`**: 독립적인 FastAPI 시장 데이터 서비스
+- **`market_collector.py`**: 거래소별 WebSocket/REST 클라이언트 관리
+- **`shared_data.py`**: Redis 백업이 있는 메모리 데이터 저장소
+- **Data Collection**: Upbit, Binance, Bybit WebSocket + Bithumb REST
 
-### API Endpoints
-- **GET `/exchanges`**: List of supported exchanges
-- **GET `/cryptocurrencies`**: List of supported cryptocurrencies
-- **GET `/api/historical_prices/{symbol}`**: Historical price data
-- **GET `/api/fear_greed_index`**: Crypto Fear & Greed Index
-- **GET `/api/prices/{symbol}`**: Current price for specific symbol
-- **GET `/api/liquidations`**: Raw liquidation data
-- **GET `/api/liquidations/aggregated`**: Aggregated liquidation statistics
-- **WebSocket `/ws/prices`**: Real-time price data stream
-- **WebSocket `/ws/liquidations`**: Real-time liquidation data stream
+#### ⚡ Liquidation Service Components (`liquidation_service/`)
+- **`main.py`**: 독립적인 FastAPI 청산 데이터 서비스
+- **`liquidation_stats_collector.py`**: 다중 거래소 청산 데이터 수집 및 통계
+- **Memory Storage**: 24시간 메모리 기반 청산 데이터 보관
+- **REST Endpoints**: `/api/liquidations/aggregated`, `/api/liquidations/debug`
+
+#### 🗄️ Shared Modules (`shared/`)
+- **`websocket_manager.py`**: WebSocketConnectionManager - 표준화된 연결 관리
+- **`data_validator.py`**: 데이터 검증, 정규화, 프리미엄 계산 클래스들
+- **`health_checker.py`**: ServiceHealthChecker - 표준화된 헬스체크
+- **`redis_manager.py`**: RedisManager - 자동 재연결 및 오류 처리
+
+### Microservices API Endpoints
+
+#### 🎯 API Gateway Endpoints (Port 8000)
+- **GET** `/` - API Gateway 상태 메시지
+- **GET** `/health` - **표준화된 헬스체크** (모든 서비스 상태 포함) 
+- **GET** `/api/coins/latest` - 통합 코인 데이터 (Market Data Service에서 집계)
+- **GET** `/api/coin-names` - 코인 한글명 매핑 (DB에서 조회)
+- **GET** `/api/fear_greed_index` - 공포탐욕지수 (외부 API 프록시)
+- **GET** `/api/liquidations/aggregated` - 청산 데이터 (Liquidation Service 프록시)
+- **WebSocket** `/ws/prices` - 실시간 가격 데이터 스트림 (통합 WebSocket 매니저)
+- **WebSocket** `/ws/liquidations` - 실시간 청산 데이터 스트림
+
+#### 📊 Market Data Service Endpoints (Port 8001)
+- **GET** `/health` - Market Data Service 상태 확인
+- **GET** `/api/market/prices` - 가격 데이터만 반환
+- **GET** `/api/market/volumes` - 거래량 데이터만 반환
+- **GET** `/api/market/premiums` - 김치 프리미엄 데이터
+- **GET** `/api/market/exchange-rate` - 환율 정보
+- **GET** `/api/market/combined` - **통합 시장 데이터** (API Gateway에서 사용)
+- **WebSocket** `/ws/market` - 실시간 시장 데이터 스트림
+- **GET** `/api/debug/collectors` - 데이터 수집기 상태 디버그
+- **GET** `/api/debug/raw-data/{exchange}` - 특정 거래소 원시 데이터
+
+#### ⚡ Liquidation Service Endpoints (Port 8002)
+- **GET** `/health` - Liquidation Service 상태 확인
+- **GET** `/api/liquidations/aggregated` - 집계된 청산 데이터
+- **GET** `/api/liquidations/debug` - 청산 데이터 디버그 정보
+- **GET** `/api/liquidations/raw` - 원시 청산 데이터
+- **GET** `/api/liquidations/summary` - 청산 데이터 요약
+- **GET** `/api/exchanges/stats` - 거래소별 청산 통계
 
 ## Technical Implementation Details
 

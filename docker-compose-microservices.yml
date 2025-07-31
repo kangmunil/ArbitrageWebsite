@@ -1,0 +1,122 @@
+version: '3.8'
+
+services:
+  # === 프론트엔드 ===
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+
+  # === API 게이트웨이 (메인 진입점) ===
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - COIN_SERVICE_URL=http://coin-service:8001
+      - LIQUIDATION_SERVICE_URL=http://liquidation-service:8002
+      - DATABASE_URL=mysql+pymysql://user:password@db/kimchiscan
+    depends_on:
+      - coin-service
+      - liquidation-service
+      - db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # === 코인 가격 수집 서비스 ===
+  coin-service:
+    build: ./coin-price-service
+    ports:
+      - "8001:8001"
+    environment:
+      - SERVICE_NAME=coin-price-service
+      - LOG_LEVEL=INFO
+      - REDIS_URL=redis://redis:6379  # 데이터 공유용
+    volumes:
+      - ./logs/coin-service:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # === 청산 데이터 수집 서비스 ===
+  liquidation-service:
+    build: ./liquidation-service
+    ports:
+      - "8002:8002"
+    environment:
+      - SERVICE_NAME=liquidation-service
+      - LOG_LEVEL=INFO
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./logs/liquidation-service:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # === 데이터베이스 ===
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: kimchiscan
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: rootpassword
+    volumes:
+      - mysql-data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uuser", "-ppassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # === Redis (서비스 간 데이터 공유) ===
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # === 선택사항: 로그 집계 (ELK Stack 대신 간단한 구조) ===
+  log-aggregator:
+    image: fluent/fluent-bit:latest
+    volumes:
+      - ./logs:/var/log
+      - ./fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
+    depends_on:
+      - coin-service
+      - liquidation-service
+    restart: unless-stopped
+    profiles: ["monitoring"]  # docker-compose --profile monitoring up
+
+volumes:
+  mysql-data:
+  redis-data:
+
+networks:
+  default:
+    name: arbitrage-network

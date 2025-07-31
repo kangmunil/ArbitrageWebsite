@@ -1,77 +1,130 @@
+/* App.css - 애플리케이션별 스타일 (공통 스타일 활용) */
+
+/* 메인 애플리케이션 스타일 - common.css의 app-container 활용 */
 .App {
   text-align: center;
-  background-color: #282c34; /* 전체 배경색 */
-  color: white; /* 기본 텍스트 색상 */
-  min-height: 100vh; /* 최소 높이 설정 */
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+/* 헤더 스타일 - common.css의 app-header 활용 */
+.App-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 var(--spacing-md);
+  height: var(--header-height);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  
-}
-
+/* 메인 레이아웃 */
 .App-main {
-  padding: 20px;
+  padding: var(--spacing-md);
 }
 
 .App-layout-container {
   display: flex;
-  gap: 20px; /* 구역 사이의 간격 */
+  gap: var(--spacing-md);
 }
 
 .App-sidebar {
-  flex: 0 0 360px; /* 고정 너비 360px (320px 컨텐츠 + 여유) */
-  min-width: 360px; /* 최소 너비 보장 */
-  max-width: 360px; /* 최대 너비 제한 */
+  flex: 0 0 var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  max-width: var(--sidebar-width);
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  box-sizing: border-box; /* 패딩 포함한 실제 크기 계산 */
-  flex-shrink: 0; /* shrink 방지 */
+  gap: var(--spacing-md);
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 .App-content {
-  flex: 1; /* 나머지 공간 사용 */
+  flex: 1;
 }
 
+/* 섹션 스타일 */
 .App-section {
   display: flex;
   flex-direction: column;
-  padding: 20px;
-  border: 1px solid #444; /* 섹션 구분선 */
-  border-radius: 8px;
-  background-color: #1a1a1a; /* 섹션 배경색 */
-  box-sizing: border-box; /* 패딩과 보더 포함한 크기 계산 */
-  width: 100%; /* 부모 컨테이너의 전체 너비 사용 */
-  max-width: 320px; /* 320px 컨텐츠에 맞춘 */
-  margin: 0 auto; /* 중앙 정렬 */
-}
-
-/* 사이드바의 고정 높이 섹션 (FearGreedIndex용) */
-.App-section.sidebar-fixed {
-  height: 220px; /* 게이지에 맞춰 더 축소 220px */
-}
-
-/* 메인 콘텐츠는 자유 높이 */
-.App-content .App-section {
-  max-width: none; /* 메인 콘텐츠는 너비 제한 없음 */
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background-color: var(--bg-secondary);
+  box-sizing: border-box;
   width: 100%;
-  margin: 0; /* 중앙 정렬 제거하고 전체 너비 사용 */
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+}
+
+.App-section.sidebar-fixed {
+  height: 220px;
+}
+
+.App-content .App-section {
+  max-width: none;
+  margin: 0;
 }
 
 .App-section h2 {
-  color: #61dafb; /* 섹션 제목 색상 */
-  margin-bottom: 20px;
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-md);
 }
 
+/* 링크 스타일 */
 .App-link {
-  color: #61dafb;
+  color: var(--text-secondary);
 }
 
+/* 코인 테이블 컨트롤 */
+.coin-table-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.exchange-selection {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.exchange-selection label {
+  white-space: nowrap;
+}
+
+.exchange-selection select {
+  padding: 8px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.search-input {
+  padding: 8px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  width: 150px;
+}
+
+/* 프리미엄 색상 */
+.premium-plus {
+  color: var(--premium-positive);
+}
+
+.premium-minus {
+  color: var(--premium-negative);
+}
+
+/* 로고 애니메이션 (필요시 유지) */
 @keyframes App-logo-spin {
   from {
     transform: rotate(0deg);
@@ -81,48 +134,7 @@
   }
 }
 
-.premium-plus {
-  color: #d9534f; /* Red for positive premium */
-}
-
-.premium-minus {
-  color: #5cb85c; /* Green for negative premium */
-}
-
-/* Table styles removed - now using Tailwind Grid */
-
-.coin-table-controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  flex-wrap: wrap; /* Allow wrapping on smaller screens */
-  gap: 10px; /* Space between items */
-}
-
-.exchange-selection {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.exchange-selection label {
-  white-space: nowrap; /* Prevent label from wrapping */
-}
-
-.exchange-selection select {
-  padding: 8px;
-  border-radius: 4px;
-  border: 1px solid #444;
-  background-color: #333;
-  color: white;
-}
-
-.search-input {
-  padding: 8px;
-  border-radius: 4px;
-  border: 1px solid #444;
-  background-color: #333;
-  color: white;
-  width: 150px; /* Half the original width (300px) */
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
 }

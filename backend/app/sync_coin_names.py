@@ -78,11 +78,14 @@ HARDCODED_KOREAN_NAMES = {
 }
 
 def fetch_upbit_korean_names():
-    """
-    업비트 API에서 모든 코인의 한글명을 가져옵니다.
-    
+    """업비트 API에서 모든 KRW 마켓 코인의 한글명을 가져옵니다.
+
+    업비트의 `market/all` 엔드포인트를 호출하여 KRW 마켓에 상장된 코인들의
+    심볼과 한글명 매핑 딕셔너리를 생성하여 반환합니다.
+
     Returns:
-        dict: 심볼 -> 한글명 매핑 딕셔너리
+        dict: 코인 심볼(예: 'BTC')을 키로 하고 한글명(예: '비트코인')을 값으로 하는 딕셔너리.
+              API 호출 실패 시 빈 딕셔너리를 반환합니다.
     """
     try:
         url = "https://api.upbit.com/v1/market/all"
@@ -162,7 +165,11 @@ def sync_cryptocurrency_names():
         db.close()
 
 def main():
-    """메인 실행 함수"""
+    """코인 한글명 동기화 프로세스의 메인 진입점입니다.
+
+    `sync_cryptocurrency_names` 함수를 호출하여 데이터베이스와 코인 한글명을 동기화하고,
+    시작 및 완료 로그를 출력합니다.
+    """
     logger.info("코인 한글명 동기화를 시작합니다...")
     sync_cryptocurrency_names()
     logger.info("동기화가 완료되었습니다.")

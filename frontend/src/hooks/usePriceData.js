@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import useWebSocket from './useWebSocketOptimized';
+import { useWebSocket, WS_STATUS } from './useWebSocketManager';
+import { coinApi } from '../utils/apiClient';
 
 const usePriceData = () => {
   const [data, setData] = useState([]);
@@ -7,58 +8,90 @@ const usePriceData = () => {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [error, setError] = useState(null);
 
-  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
-  const priceWsEndpoint = `${backendUrl.replace('http', 'ws')}/ws/prices`;
-  const { data: wsData, status: wsStatus } = useWebSocket([priceWsEndpoint]);
+  // 통합 WebSocket 관리자 사용 - 재연결 빈도 최적화
+  const priceWs = useWebSocket('/ws/prices', {
+    reconnectAttempts: 2,
+    reconnectInterval: 20000, // 20초로 증가
+    connectionTimeout: 30000, // 30초로 증가
+    enableLogging: true // 디버깅을 위해 임시 활성화
+  });
 
   const loadInitialData = useCallback(async () => {
     try {
       setConnectionStatus('loading');
-      const response = await fetch(`${backendUrl}/api/coins/latest`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const result = await coinApi.getLatest(false); // 캐시 사용 안함
+      
+      if (result.success) {
+        setData(result.data);
+        setLastUpdate(new Date());
+        setConnectionStatus('loaded');
+        setError(null);
+      } else {
+        throw new Error(result.error);
       }
-      const result = await response.json();
-      setData(result.data);
-      setLastUpdate(new Date());
-      setConnectionStatus('loaded');
-      setError(null);
     } catch (err) {
       console.error('Failed to load initial data:', err);
       setError(err.message);
       setConnectionStatus('failed');
     }
-  }, [backendUrl]);
+  }, []);
 
   useEffect(() => {
-    // 초기 상태 설정
-    setConnectionStatus('loading');
-
-    // 웹소켓 연결 상태를 추적
-    const currentWsStatus = wsStatus[priceWsEndpoint];
-    if (currentWsStatus) {
-      setConnectionStatus(currentWsStatus);
+    // WebSocket 상태에 따른 연결 상태 업데이트
+    switch (priceWs.status) {
+      case WS_STATUS.CONNECTED:
+        setConnectionStatus('connected');
+        setError(null);
+        break;
+      case WS_STATUS.CONNECTING:
+      case WS_STATUS.RECONNECTING:
+        setConnectionStatus('connecting');
+        break;
+      case WS_STATUS.ERROR:
+        setConnectionStatus('error');
+        setError(priceWs.error);
+        // WebSocket 오류 시 초기 데이터 로드 시도
+        loadInitialData();
+        break;
+      case WS_STATUS.DISCONNECTED:
+        setConnectionStatus('disconnected');
+        // 연결 끊김 시 초기 데이터 로드 시도
+        loadInitialData();
+        break;
+      default:
+        setConnectionStatus('loading');
     }
+  }, [priceWs.status, priceWs.error, loadInitialData]);
 
-    // 웹소켓 데이터가 있으면 업데이트
-    if (wsData[priceWsEndpoint]) {
-      const newData = wsData[priceWsEndpoint];
-      setData(newData);
-      setLastUpdate(new Date());
-      console.log('🔍 [usePriceData] 웹소켓 데이터 업데이트됨. 첫 번째 코인:', newData[0]?.symbol, newData[0]?.upbit_price);
-    } else if (currentWsStatus === 'disconnected' || currentWsStatus === 'error') {
-      // 웹소켓 연결이 끊기거나 오류 발생 시에만 초기 데이터 로딩 시도
-      loadInitialData();
+  useEffect(() => {
+    // WebSocket 데이터 업데이트
+    if (priceWs.data) {
+      console.log('🔍 [usePriceData] 원시 WebSocket 데이터 수신:', priceWs.data);
+      
+      // 새로운 WebSocket 매니저의 표준 메시지 형식 처리
+      const messageData = priceWs.data.data || priceWs.data;
+      
+      if (Array.isArray(messageData)) {
+        console.log('💰 [usePriceData] 배열 데이터 처리:', messageData.length, '개 코인');
+        console.log('💎 [usePriceData] 첫 번째 코인 샘플:', messageData[0]);
+        setData(messageData);
+        setLastUpdate(new Date());
+      } else {
+        console.warn('⚠️ [usePriceData] 예상과 다른 데이터 형식:', typeof messageData, messageData);
+      }
+    } else {
+      console.log('🔍 [usePriceData] WebSocket 데이터가 null/undefined');
     }
-  }, [wsData, wsStatus, priceWsEndpoint, loadInitialData]);
+  }, [priceWs.data]);
 
   return {
     data,
     connectionStatus,
     lastUpdate,
     error,
-    reconnect: loadInitialData, // Reconnect is now just reloading initial data
+    reconnect: priceWs.reconnect, // WebSocket 재연결 함수 사용
     refresh: loadInitialData,
+    wsStats: priceWs.stats // WebSocket 통계 정보 추가
   };
 };
 

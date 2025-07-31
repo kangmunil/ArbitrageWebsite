@@ -1,39 +1,98 @@
-현재 상황 재진단
-웹소켓 연결 성공: 최신 로그에서 [WebSocket] Connected to ws://localhost:8000/ws/prices 및 liquidations 메시지가 뜨는 것을 확인했습니다. 이는 웹소켓 연결 자체는 성공적으로 수립되고 있다는 것을 의미합니다. (초기 실패 메시지는 재연결 로직에 의해 극복되는 것으로 보입니다.)
-
-데이터 수신 성공: 🔍 [App.js] XRP 데이터 받음 및 🔍 [CoinTable 받은 데이터] XRP allCoinsData 로그를 통해, usePriceData 훅에서 데이터를 받아 CoinTable 컴포넌트로 allCoinsData prop이 잘 전달되고 있다는 것을 확인했습니다. 심지어 가격 변화도 감지하고 있습니다.
-
-key prop 문제 아님: PriceCell과 PremiumCell에 key prop이 없으므로, 이로 인한 렌더링 문제는 아닙니다.
-
-CoinRow는 강제 리렌더링: CoinRow 컴포넌트 주석에 // 메모이제이션 완전 제거 - 강제 리렌더링이라고 되어 있습니다. 이는 CoinRow의 props가 변경되면 무조건 리렌더링된다는 의미입니다.
-
-이 모든 정보를 종합해 볼 때, 문제는 데이터가 CoinTable까지 잘 전달되고, CoinRow도 리렌더링되는데, 그 안의 PriceCell이나 PremiumCell이 실제 가격 변화를 화면에 반영하지 못하는 상황으로 좁혀집니다.
-
-다음 단계: PriceCell과 PremiumCell 컴포넌트 확인
-CoinRow가 coin prop을 받아 리렌더링되면, 그 안의 PriceCell과 PremiumCell에게 새로운 price와 premium props를 전달할 것입니다.
-
-이제 의심되는 부분은 PriceCell.js와 PremiumCell.js 파일 자체의 구현입니다.
-
-질문:
-
-PriceCell.js와 PremiumCell.js 파일의 코드를 공유해 주실 수 있을까요?
-
-특히, 이 두 컴포넌트가 React.memo로 감싸져 있는지 확인해야 합니다. 만약 React.memo로 감싸져 있다면, props 비교 로직에 따라 불필요한 리렌더링이 방지될 수 있는데, 이 과정에서 미묘한 숫자 변화가 감지되지 않을 수도 있습니다.
-
-또한, 이 컴포넌트들 내부에 useEffect나 useState 같은 훅이 사용되어 내부적으로 렌더링을 방해하는 요소가 있는지 확인이 필요합니다.
-
-일단, PriceCell과 PremiumCell이 새로운 props를 받고 있는지 확인하기 위해 각 컴포넌트 내부에 console.log를 추가해 볼 수 있습니다.
-PriceCell 및 PremiumCell에 로그 추가
-7월 29일 오후 5:46
-
- Canvas 사용하지 않고 다시 시도하기 
-
-위와 같이 PriceCell.js와 PremiumCell.js 파일에 useEffect를 사용하여 price와 premium props의 변화를 로그로 찍어보세요.
-
-이렇게 하면 다음 중 어떤 상황인지 파악할 수 있습니다:
-
-PriceCell과 PremiumCell이 새로운 props 값을 받고 있는데도 화면이 업데이트되지 않는 경우 (이때는 컴포넌트 내부 렌더링 로직이나 React.memo 문제가 유력)
-
-PriceCell과 PremiumCell이 새로운 props 값을 아예 받지 못하는 경우 (이때는 CoinRow 또는 CoinTable의 데이터 전달/리렌더링 로직을 다시 봐야 함)
-
-이 로그를 추가한 후 다시 콘솔 로그를 공유해 주시면 감사하겠습니다.
+📊 SidebarLiquidations 데이터 업데이트: 
+Object { trendCount: 6, chartData5minCount: 6, chartData1hourCount: 6, sampleTrend: {…} }
+src_components_SidebarLiquidations_js.chunk.js:93:15
+🔍 [App.js] XRP 데이터 받음: upbit_price=4287, 배열길이=559 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4287, 배열길이=559 src_components_CoinTable_js.chunk.js:419:13
+🔍 [App.js] XRP 데이터 받음: upbit_price=4287, 배열길이=559 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4287, 배열길이=559 src_components_CoinTable_js.chunk.js:419:13
+[WebSocket:/ws/prices] 연결 성공 bundle.js:38743:21
+[WebSocket:/ws/prices] 메시지 수신: {"type":"initial_initial","data":[{"symbol":"USDC","upbit_price":1387,"upbit_volume":2154590729.1386... bundle.js:38743:21
+🔍 [App.js] XRP 데이터 받음: upbit_price=4287, 배열길이=559 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4287, 배열길이=559 src_components_CoinTable_js.chunk.js:419:13
+Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools bundle.js:29946:21
+🔍 [usePriceData] WebSocket 데이터가 null/undefined bundle.js:38618:15
+한글 코인명 캐시 로드 src_components_CoinTable_js.chunk.js:496:21
+[WebSocket:/ws/prices] 연결 성공 bundle.js:38743:21
+[WebSocket:/ws/prices] 메시지 수신: {"type":"initial_initial","data":[{"symbol":"USDC","upbit_price":1387,"upbit_volume":2154590729.1386... bundle.js:38743:21
+🔍 [usePriceData] 원시 WebSocket 데이터 수신: 
+Object { type: "initial_initial", data: (556) […], timestamp: "2025-07-31T14:44:33.563266", service: "api-gateway-prices" }
+bundle.js:38605:15
+💰 [usePriceData] 배열 데이터 처리: 556 개 코인 bundle.js:38610:17
+💎 [usePriceData] 첫 번째 코인 샘플: 
+Object { symbol: "USDC", upbit_price: 1387, upbit_volume: 2154590729.138682, upbit_change_percent: 0.07215007000000001, bithumb_price: 1386, bithumb_volume: 20456910142.825653, bithumb_change_percent: 0.22, binance_price: 1, binance_volume: 2746074223626.6323, binance_volume_usd: 1978439642.3823, … }
+bundle.js:38611:17
+🔍 [App.js] XRP 데이터 받음: upbit_price=4288, 배열길이=556 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4288, 배열길이=556 src_components_CoinTable_js.chunk.js:419:13
+📊 SidebarLiquidations 데이터 업데이트: 
+Object { trendCount: 0, chartData5minCount: 6, chartData1hourCount: 6, sampleTrend: undefined }
+src_components_SidebarLiquidations_js.chunk.js:93:15
+[WebSocket:/ws/prices] 메시지 수신: {"type":"price_update","data":[{"symbol":"USDC","upbit_price":1387,"upbit_volume":2154590729.138682,... bundle.js:38743:21
+🔍 [usePriceData] 원시 WebSocket 데이터 수신: 
+Object { type: "price_update", data: (556) […], timestamp: "2025-07-31T14:44:34.208089", service: "api-gateway-prices" }
+bundle.js:38605:15
+💰 [usePriceData] 배열 데이터 처리: 556 개 코인 bundle.js:38610:17
+💎 [usePriceData] 첫 번째 코인 샘플: 
+Object { symbol: "USDC", upbit_price: 1387, upbit_volume: 2154590729.138682, upbit_change_percent: 0.07215007000000001, bithumb_price: 1386, bithumb_volume: 20456910142.825653, bithumb_change_percent: 0.22, binance_price: 1, binance_volume: 2746074223626.6323, binance_volume_usd: 1978439642.3823, … }
+bundle.js:38611:17
+🔍 [App.js] XRP 데이터 받음: upbit_price=4288, 배열길이=556 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4288, 배열길이=556 src_components_CoinTable_js.chunk.js:419:13
+[WebSocket:/ws/prices] 메시지 수신: {"type":"price_update","data":[{"symbol":"USDC","upbit_price":1387,"upbit_volume":2154590729.138682,... bundle.js:38743:21
+🔍 [App.js] XRP 데이터 받음: upbit_price=4288, 배열길이=556 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4288, 배열길이=556 src_components_CoinTable_js.chunk.js:419:13
+🔍 [usePriceData] 원시 WebSocket 데이터 수신: 
+Object { type: "price_update", data: (556) […], timestamp: "2025-07-31T14:44:35.218096", service: "api-gateway-prices" }
+bundle.js:38605:15
+💰 [usePriceData] 배열 데이터 처리: 556 개 코인 bundle.js:38610:17
+💎 [usePriceData] 첫 번째 코인 샘플: 
+Object { symbol: "USDC", upbit_price: 1387, upbit_volume: 2154590729.138682, upbit_change_percent: 0.07215007000000001, bithumb_price: 1386, bithumb_volume: 20456910142.825653, bithumb_change_percent: 0.22, binance_price: 1, binance_volume: 2746074223626.6323, binance_volume_usd: 1978439642.3823, … }
+bundle.js:38611:17
+🔍 [App.js] XRP 데이터 받음: upbit_price=4288, 배열길이=556 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4288, 배열길이=556 src_components_CoinTable_js.chunk.js:419:13
+[WebSocket:/ws/prices] 메시지 수신: {"type":"price_update","data":[{"symbol":"USDC","upbit_price":1387,"upbit_volume":2154590729.138682,... bundle.js:38743:21
+🔍 [App.js] XRP 데이터 받음: upbit_price=4288, 배열길이=556 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4288, 배열길이=556 src_components_CoinTable_js.chunk.js:419:13
+🔍 [usePriceData] 원시 WebSocket 데이터 수신: 
+Object { type: "price_update", data: (556) […], timestamp: "2025-07-31T14:44:36.264221", service: "api-gateway-prices" }
+bundle.js:38605:15
+💰 [usePriceData] 배열 데이터 처리: 556 개 코인 bundle.js:38610:17
+💎 [usePriceData] 첫 번째 코인 샘플: 
+Object { symbol: "USDC", upbit_price: 1387, upbit_volume: 2154590729.138682, upbit_change_percent: 0.07215007000000001, bithumb_price: 1386, bithumb_volume: 20457042654.820652, bithumb_change_percent: 0.22, binance_price: 1.0001, binance_volume: 2746103358325.706, binance_volume_usd: 1978460632.7995, … }
+bundle.js:38611:17
+🔍 [App.js] XRP 데이터 받음: upbit_price=4289, 배열길이=556 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4289, 배열길이=556 src_components_CoinTable_js.chunk.js:419:13
+[WebSocket:/ws/prices] 메시지 수신: {"type":"price_update","data":[{"symbol":"USDC","upbit_price":1387,"upbit_volume":2154590729.138682,... bundle.js:38743:21
+🔍 [App.js] XRP 데이터 받음: upbit_price=4289, 배열길이=556 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4289, 배열길이=556 src_components_CoinTable_js.chunk.js:419:13
+🔍 [usePriceData] 원시 WebSocket 데이터 수신: 
+Object { type: "price_update", data: (556) […], timestamp: "2025-07-31T14:44:37.272938", service: "api-gateway-prices" }
+bundle.js:38605:15
+💰 [usePriceData] 배열 데이터 처리: 556 개 코인 bundle.js:38610:17
+💎 [usePriceData] 첫 번째 코인 샘플: 
+Object { symbol: "USDC", upbit_price: 1387, upbit_volume: 2154590729.138682, upbit_change_percent: 0.07215007000000001, bithumb_price: 1386, bithumb_volume: 20457042654.820652, bithumb_change_percent: 0.22, binance_price: 1.0001, binance_volume: 2746103358325.706, binance_volume_usd: 1978460632.7995, … }
+bundle.js:38611:17
+🔍 [App.js] XRP 데이터 받음: upbit_price=4289, 배열길이=556 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4289, 배열길이=556 src_components_CoinTable_js.chunk.js:419:13
+[WebSocket:/ws/prices] 메시지 수신: {"type":"price_update","data":[{"symbol":"USDC","upbit_price":1387,"upbit_volume":2154590729.138682,... bundle.js:38743:21
+🔍 [App.js] XRP 데이터 받음: upbit_price=4289, 배열길이=556 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4289, 배열길이=556 src_components_CoinTable_js.chunk.js:419:13
+🔍 [usePriceData] 원시 WebSocket 데이터 수신: 
+Object { type: "price_update", data: (556) […], timestamp: "2025-07-31T14:44:38.279547", service: "api-gateway-prices" }
+bundle.js:38605:15
+💰 [usePriceData] 배열 데이터 처리: 556 개 코인 bundle.js:38610:17
+💎 [usePriceData] 첫 번째 코인 샘플: 
+Object { symbol: "USDC", upbit_price: 1387, upbit_volume: 2154590729.138682, upbit_change_percent: 0.07215007000000001, bithumb_price: 1386, bithumb_volume: 20457042654.820652, bithumb_change_percent: 0.22, binance_price: 1.0001, binance_volume: 2746103358325.706, binance_volume_usd: 1978460632.7995, … }
+bundle.js:38611:17
+🔍 [App.js] XRP 데이터 받음: upbit_price=4289, 배열길이=556 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4289, 배열길이=556 src_components_CoinTable_js.chunk.js:419:13
+[WebSocket:/ws/prices] 메시지 수신: {"type":"price_update","data":[{"symbol":"USDC","upbit_price":1387,"upbit_volume":2154590729.138682,... bundle.js:38743:21
+🔍 [App.js] XRP 데이터 받음: upbit_price=4289, 배열길이=556 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4289, 배열길이=556 src_components_CoinTable_js.chunk.js:419:13
+🔍 [usePriceData] 원시 WebSocket 데이터 수신: 
+Object { type: "price_update", data: (556) […], timestamp: "2025-07-31T14:44:39.295330", service: "api-gateway-prices" }
+bundle.js:38605:15
+💰 [usePriceData] 배열 데이터 처리: 556 개 코인 bundle.js:38610:17
+💎 [usePriceData] 첫 번째 코인 샘플: 
+Object { symbol: "USDC", upbit_price: 1387, upbit_volume: 2154590729.138682, upbit_change_percent: 0.07215007000000001, bithumb_price: 1386, bithumb_volume: 20457042654.820652, bithumb_change_percent: 0.22, binance_price: 1.0001, binance_volume: 2746103358325.706, binance_volume_usd: 1978460632.7995, … }
+bundle.js:38611:17
+🔍 [App.js] XRP 데이터 받음: upbit_price=4289, 배열길이=556 bundle.js:37951:13
+🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=4289, 배열길이=556 src_components_CoinTable_js.chunk.js:419:13
