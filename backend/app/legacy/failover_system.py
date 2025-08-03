@@ -422,9 +422,19 @@ class ResilientExchangeManager:
         """
         logger.info(f"{exchange} 서비스 복구 완료")
         
-        if self.on_recovery:
-            callback = self.on_recovery
-            await callback(exchange)
+        # Recovery event handling - restart client connection
+        if exchange in self.exchange_clients:
+            client = self.exchange_clients[exchange]
+            try:
+                await client.disconnect()
+                await asyncio.sleep(1)  # Brief pause before reconnection
+                success = await client.connect()
+                if success:
+                    logger.info(f"{exchange} 클라이언트 재연결 성공")
+                else:
+                    logger.warning(f"{exchange} 클라이언트 재연결 실패")
+            except Exception as e:
+                logger.error(f"{exchange} 클라이언트 재연결 중 오류: {e}")
     
     async def _on_client_error(self, exchange: str, error: Exception):
         """거래소 클라이언트에서 오류 발생 시 호출되는 콜백 함수입니다.

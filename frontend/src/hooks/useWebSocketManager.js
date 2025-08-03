@@ -28,6 +28,9 @@ const DEFAULT_OPTIONS = {
 
 /**
  * 단일 WebSocket 연결 관리 훅
+ * @param {string} endpoint - WebSocket 엔드포인트
+ * @param {Object} options - 연결 옵션
+ * @returns {{status: string, data: any, error: string, lastMessageTime: Date, sendMessage: Function, reconnect: Function, disconnect: Function, stats: Object}}
  */
 export const useWebSocket = (endpoint, options = {}) => {
   const config = { ...DEFAULT_OPTIONS, ...options };
@@ -42,13 +45,20 @@ export const useWebSocket = (endpoint, options = {}) => {
   const [error, setError] = useState(null);
   const [lastMessageTime, setLastMessageTime] = useState(null);
   
+  /**
+   * 로그를 출력합니다.
+   * @param {string} message - 로그 메시지
+   * @param {string} level - 로그 레벨 (info, warn, error)
+   */
   const log = useCallback((message, level = 'info') => {
     if (config.enableLogging) {
       console[level](`[WebSocket:${endpoint}] ${message}`);
     }
   }, [endpoint, config.enableLogging]);
   
-  // 연결 함수
+  /**
+   * WebSocket에 연결합니다.
+   */
   const connect = useCallback(() => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       log('이미 연결되어 있습니다');
@@ -106,11 +116,38 @@ export const useWebSocket = (endpoint, options = {}) => {
           
           const message = JSON.parse(event.data);
           
-          // 메시지 유효성 검사
+          // 메시지 유효성 검사 및 타입별 처리
           if (message && typeof message === 'object') {
-            setData(message);
+            // 하이브리드 업데이트 시스템: 메시지 타입에 따라 분기 처리
+            const messageType = message.type || 'price_update';
+            
+            if (messageType === 'major_update') {
+              // Major 코인 즉시 업데이트: 개별 데이터이므로 배열로 래핑하여 전달
+              setData({
+                type: 'major_update',
+                data: message.data || message,
+                timestamp: new Date()
+              });
+              log(`Major 코인 즉시 업데이트: ${message.data?.[0]?.symbol || 'unknown'}`);
+            } else if (messageType === 'minor_batch') {
+              // Minor 코인 배치 업데이트
+              setData({
+                type: 'minor_batch', 
+                data: message.data || message,
+                timestamp: new Date()
+              });
+              log(`Minor 코인 배치 업데이트: ${(message.data || []).length}개`);
+            } else {
+              // 기존 방식 (호환성 유지)
+              setData({
+                type: 'price_update',
+                data: message.data || message,
+                timestamp: new Date()
+              });
+              log(`기본 가격 업데이트: ${JSON.stringify(message).substring(0, 100)}...`);
+            }
+            
             setLastMessageTime(new Date());
-            log(`메시지 수신: ${JSON.stringify(message).substring(0, 100)}...`);
           } else {
             log('잘못된 메시지 형식', 'warn');
           }
@@ -151,7 +188,9 @@ export const useWebSocket = (endpoint, options = {}) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [endpoint, config.connectionTimeout, config.pingInterval, log]);
   
-  // 재연결 시도
+  /**
+   * 재연결을 시도합니다.
+   */
   const attemptReconnect = useCallback(() => {
     if (reconnectCountRef.current >= config.reconnectAttempts) {
       log('최대 재연결 시도 횟수 초과', 'warn');
@@ -172,7 +211,9 @@ export const useWebSocket = (endpoint, options = {}) => {
     }, delay);
   }, [config.reconnectAttempts, config.reconnectInterval, connect, log]);
   
-  // Ping 시작
+  /**
+   * Ping을 시작합니다.
+   */
   const startPing = useCallback(() => {
     if (config.pingInterval <= 0 || pingIntervalRef.current) return;
     
@@ -184,7 +225,9 @@ export const useWebSocket = (endpoint, options = {}) => {
     }, config.pingInterval);
   }, [config.pingInterval, log]);
   
-  // Ping 중지
+  /**
+   * Ping을 중지합니다.
+   */
   const stopPing = useCallback(() => {
     if (pingIntervalRef.current) {
       clearInterval(pingIntervalRef.current);
@@ -192,7 +235,9 @@ export const useWebSocket = (endpoint, options = {}) => {
     }
   }, []);
   
-  // 연결 해제
+  /**
+   * WebSocket 연결을 해제합니다.
+   */
   const disconnect = useCallback(() => {
     log('연결 해제 요청');
     
@@ -211,7 +256,11 @@ export const useWebSocket = (endpoint, options = {}) => {
     setStatus(WS_STATUS.DISCONNECTED);
   }, [config.reconnectAttempts, log, stopPing]);
   
-  // 메시지 전송
+  /**
+   * WebSocket으로 메시지를 전송합니다.
+   * @param {any} message - 전송할 메시지
+   * @returns {boolean} 전송 성공 여부
+   */
   const sendMessage = useCallback((message) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
@@ -224,7 +273,9 @@ export const useWebSocket = (endpoint, options = {}) => {
     }
   }, [log]);
   
-  // 수동 재연결
+  /**
+   * 수동으로 재연결을 시도합니다.
+   */
   const reconnect = useCallback(() => {
     log('수동 재연결 시도');
     
@@ -294,6 +345,9 @@ export const useWebSocket = (endpoint, options = {}) => {
 
 /**
  * 다중 WebSocket 연결 관리 훅
+ * @param {Array<string>} endpoints - WebSocket 엔드포인트 목록
+ * @param {Object} options - 연결 옵션
+ * @returns {{connections: Object, globalStatus: string, disconnectAll: Function, reconnectAll: Function, getConnection: Function, getAllData: Function, getStats: Function}}
  */
 export const useMultipleWebSockets = (endpoints, options = {}) => {
   const [connections, setConnections] = useState({});
@@ -339,7 +393,9 @@ export const useMultipleWebSockets = (endpoints, options = {}) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
-  // 모든 연결 해제
+  /**
+   * 모든 WebSocket 연결을 해제합니다.
+   */
   const disconnectAll = useCallback(() => {
     Object.values(sockets).forEach(socket => {
       socket.disconnect();
@@ -347,7 +403,9 @@ export const useMultipleWebSockets = (endpoints, options = {}) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
-  // 모든 연결 재시도
+  /**
+   * 모든 WebSocket 연결을 재시도합니다.
+   */
   const reconnectAll = useCallback(() => {
     Object.values(sockets).forEach(socket => {
       socket.reconnect();

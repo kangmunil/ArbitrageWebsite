@@ -32,10 +32,10 @@ function App() {
     refresh
   } = usePriceData();
   
-  // App.js에서 받은 데이터 확인 (안전한 배열 체크)
-  const xrpInApp = Array.isArray(allCoinsData) ? allCoinsData.find(coin => coin.symbol === 'XRP') : null;
-  if (xrpInApp) {
-    console.log(`🔍 [App.js] XRP 데이터 받음: upbit_price=${xrpInApp.upbit_price}, 배열길이=${allCoinsData.length}`);
+  // 운영 모드: 상세 XRP 로그 비활성화
+  if (Array.isArray(allCoinsData) && allCoinsData.length > 0 && !console._appDataLogged) {
+    console.log(`💰 App initialized with ${allCoinsData.length} coins`);
+    console._appDataLogged = true;
   }
   
   // 거래소 선택 핸들러 메모이제이션

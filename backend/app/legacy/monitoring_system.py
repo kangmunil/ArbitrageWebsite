@@ -126,10 +126,12 @@ class MetricsCollector:
         self._record_metric("process.cpu.usage", process.cpu_percent(), "percent", timestamp)
         self._record_metric("process.memory.rss", process.memory_info().rss / (1024**2), "MB", timestamp)
         
-        # 파일 디스크립터 사용량
+        # 파일 디스크립터 사용량 (Unix 시스템에서만 사용 가능)
         try:
-            fd_count = process.num_fds() if hasattr(process, 'num_fds') else 0
-            self._record_metric("process.file_descriptors", fd_count, "count", timestamp)
+            import platform
+            if platform.system() != 'Windows':
+                fd_count = getattr(process, 'num_fds', lambda: 0)()
+                self._record_metric("process.file_descriptors", fd_count, "count", timestamp)
         except:
             pass
     

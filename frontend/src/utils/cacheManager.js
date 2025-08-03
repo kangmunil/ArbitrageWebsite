@@ -10,6 +10,9 @@
  */
 
 class CacheManager {
+  /**
+   * CacheManager 인스턴스를 생성합니다.
+   */
   constructor() {
     this.memoryCache = new Map();
     this.defaultTTL = 5 * 60 * 1000; // 5분
@@ -20,7 +23,10 @@ class CacheManager {
   }
   
   /**
-   * 메모리 캐시에 데이터 저장
+   * 메모리 캐시에 데이터를 저장합니다.
+   * @param {string} key - 캐시 키
+   * @param {any} data - 저장할 데이터
+   * @param {number} ttl - 캐시 유효 기간 (ms)
    */
   setMemoryCache(key, data, ttl = this.defaultTTL) {
     // 캐시 크기 제한
@@ -37,11 +43,13 @@ class CacheManager {
       lastAccess: Date.now()
     });
     
-    console.log(`Memory cache set: ${key} (TTL: ${ttl}ms)`);
+    // Memory cache updated
   }
   
   /**
-   * 메모리 캐시에서 데이터 조회
+   * 메모리 캐시에서 데이터를 조회합니다.
+   * @param {string} key - 조회할 캐시 키
+   * @returns {any | null} 캐시된 데이터 또는 null
    */
   getMemoryCache(key) {
     const cached = this.memoryCache.get(key);
@@ -52,7 +60,7 @@ class CacheManager {
     
     if (Date.now() > cached.expiryTime) {
       this.memoryCache.delete(key);
-      console.log(`Memory cache expired: ${key}`);
+      // Cache item expired
       return null;
     }
     
@@ -64,7 +72,10 @@ class CacheManager {
   }
   
   /**
-   * localStorage에 데이터 저장 (영구 저장)
+   * localStorage에 데이터를 저장합니다. (영구 저장)
+   * @param {string} key - 캐시 키
+   * @param {any} data - 저장할 데이터
+   * @param {number | null} ttl - 캐시 유효 기간 (ms)
    */
   setLocalStorage(key, data, ttl = null) {
     try {
@@ -75,7 +86,7 @@ class CacheManager {
       };
       
       localStorage.setItem(`cache_${key}`, JSON.stringify(cacheData));
-      console.log(`LocalStorage cache set: ${key}`);
+      // LocalStorage updated
     } catch (error) {
       console.error(`LocalStorage cache failed: ${key}`, error);
       // 저장 공간 부족 시 오래된 항목 정리
@@ -84,7 +95,9 @@ class CacheManager {
   }
   
   /**
-   * localStorage에서 데이터 조회
+   * localStorage에서 데이터를 조회합니다.
+   * @param {string} key - 조회할 캐시 키
+   * @returns {any | null} 캐시된 데이터 또는 null
    */
   getLocalStorage(key) {
     try {
@@ -98,7 +111,7 @@ class CacheManager {
       // 만료 확인
       if (cacheData.expiryTime && Date.now() > cacheData.expiryTime) {
         localStorage.removeItem(`cache_${key}`);
-        console.log(`LocalStorage cache expired: ${key}`);
+        // LocalStorage item expired
         return null;
       }
       
@@ -110,7 +123,9 @@ class CacheManager {
   }
   
   /**
-   * sessionStorage에 데이터 저장 (세션 종료 시 삭제)
+   * sessionStorage에 데이터를 저장합니다. (세션 종료 시 삭제)
+   * @param {string} key - 캐시 키
+   * @param {any} data - 저장할 데이터
    */
   setSessionStorage(key, data) {
     try {
@@ -120,14 +135,16 @@ class CacheManager {
       };
       
       sessionStorage.setItem(`cache_${key}`, JSON.stringify(cacheData));
-      console.log(`SessionStorage cache set: ${key}`);
+      // SessionStorage updated
     } catch (error) {
       console.error(`SessionStorage cache failed: ${key}`, error);
     }
   }
   
   /**
-   * sessionStorage에서 데이터 조회
+   * sessionStorage에서 데이터를 조회합니다.
+   * @param {string} key - 조회할 캐시 키
+   * @returns {any | null} 캐시된 데이터 또는 null
    */
   getSessionStorage(key) {
     try {
@@ -145,7 +162,10 @@ class CacheManager {
   }
   
   /**
-   * API 응답 캐시 (메모리 + localStorage 조합)
+   * API 응답을 캐시합니다. (메모리 + localStorage 조합)
+   * @param {string} url - API URL
+   * @param {any} response - 캐시할 응답 데이터
+   * @param {number} ttl - 캐시 유효 기간 (ms)
    */
   async cacheApiResponse(url, response, ttl = this.defaultTTL) {
     const key = `api_${this.hashString(url)}`;
@@ -160,7 +180,9 @@ class CacheManager {
   }
   
   /**
-   * API 응답 캐시 조회
+   * 캐시된 API 응답을 조회합니다.
+   * @param {string} url - 조회할 API URL
+   * @returns {any | null} 캐시된 응답 데이터 또는 null
    */
   getCachedApiResponse(url) {
     const key = `api_${this.hashString(url)}`;
@@ -183,7 +205,9 @@ class CacheManager {
   }
   
   /**
-   * 이미지 캐시 (브라우저 캐시 활용)
+   * 이미지를 미리 로드합니다. (브라우저 캐시 활용)
+   * @param {Array<string>} imageUrls - 미리 로드할 이미지 URL 목록
+   * @returns {Promise<Array>} 각 이미지의 로드 결과
    */
   preloadImages(imageUrls) {
     const promises = imageUrls.map(url => {
@@ -199,7 +223,9 @@ class CacheManager {
   }
   
   /**
-   * 코인 아이콘 캐시
+   * 코인 아이콘을 캐시합니다.
+   * @param {string} url - 캐시할 이미지 URL
+   * @returns {Promise<string>} 캐시된 이미지의 Object URL 또는 원본 URL
    */
   async cacheImage(url) {
     try {
@@ -218,7 +244,7 @@ class CacheManager {
   }
   
   /**
-   * 주기적 정리 작업
+   * 주기적인 정리 작업을 시작합니다.
    */
   startCleanupInterval() {
     setInterval(() => {
@@ -228,7 +254,7 @@ class CacheManager {
   }
   
   /**
-   * 메모리 캐시 정리
+   * 메모리 캐시를 정리합니다.
    */
   cleanupMemoryCache() {
     const now = Date.now();
@@ -245,12 +271,12 @@ class CacheManager {
     });
     
     if (toDelete.length > 0) {
-      console.log(`Memory cache cleanup: ${toDelete.length} items removed`);
+      // Memory cache cleaned
     }
   }
   
   /**
-   * localStorage 정리
+   * localStorage를 정리합니다.
    */
   cleanupLocalStorage() {
     try {
@@ -274,7 +300,7 @@ class CacheManager {
       });
       
       if (cleanedCount > 0) {
-        console.log(`LocalStorage cleanup: ${cleanedCount} items removed`);
+        // LocalStorage cleaned
       }
     } catch (error) {
       console.error('LocalStorage cleanup failed:', error);
@@ -282,7 +308,9 @@ class CacheManager {
   }
   
   /**
-   * 문자열 해시 생성 (캐시 키용)
+   * 문자열을 해시하여 캐시 키로 사용합니다.
+   * @param {string} str - 해시할 문자열
+   * @returns {string} 해시된 문자열
    */
   hashString(str) {
     let hash = 0;
@@ -298,7 +326,8 @@ class CacheManager {
   }
   
   /**
-   * 캐시 통계 조회
+   * 캐시 통계를 조회합니다.
+   * @returns {Object} 캐시 통계 정보
    */
   getStats() {
     const memoryStats = {
@@ -327,7 +356,8 @@ class CacheManager {
   }
   
   /**
-   * localStorage 사용량 계산
+   * localStorage의 사용량을 계산합니다.
+   * @returns {number} localStorage 사용량 (bytes)
    */
   getLocalStorageSize() {
     let total = 0;
@@ -344,7 +374,7 @@ class CacheManager {
   }
   
   /**
-   * 전체 캐시 초기화
+   * 모든 캐시를 초기화합니다.
    */
   clearAll() {
     // 메모리 캐시 초기화
@@ -368,7 +398,7 @@ class CacheManager {
       console.error('SessionStorage clear failed:', error);
     }
     
-    console.log('All caches cleared');
+    // All caches cleared
   }
 }
 
@@ -378,13 +408,17 @@ const cacheManager = new CacheManager();
 export default cacheManager;
 
 /**
- * 캐시된 fetch 함수
+ * 캐시된 fetch 함수입니다.
+ * @param {string} url - 요청 URL
+ * @param {Object} options - fetch 옵션
+ * @param {number} ttl - 캐시 유효 기간 (ms)
+ * @returns {Promise<Object>} API 응답 데이터
  */
 export const cachedFetch = async (url, options = {}, ttl = 5 * 60 * 1000) => {
   // 캐시에서 확인
   const cached = cacheManager.getCachedApiResponse(url);
   if (cached) {
-    console.log(`Cache hit: ${url}`);
+    // Cache hit
     return Promise.resolve({ ...cached, fromCache: true });
   }
   
@@ -396,7 +430,7 @@ export const cachedFetch = async (url, options = {}, ttl = 5 * 60 * 1000) => {
     // 성공한 응답만 캐시
     if (response.ok) {
       await cacheManager.cacheApiResponse(url, data, ttl);
-      console.log(`API call cached: ${url}`);
+      // API response cached
     }
     
     return { ...data, fromCache: false };

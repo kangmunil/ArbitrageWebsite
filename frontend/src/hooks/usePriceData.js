@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useWebSocket, WS_STATUS } from './useWebSocketManager';
 import { coinApi } from '../utils/apiClient';
 
+/**
+ * 가격 데이터를 관리하는 커스텀 훅.
+ * @returns {{data: Array, connectionStatus: string, lastUpdate: Date, error: string, reconnect: Function, refresh: Function, wsStats: Object}}
+ */
 const usePriceData = () => {
   const [data, setData] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState('loading');
@@ -13,9 +17,12 @@ const usePriceData = () => {
     reconnectAttempts: 2,
     reconnectInterval: 20000, // 20초로 증가
     connectionTimeout: 30000, // 30초로 증가
-    enableLogging: true // 디버깅을 위해 임시 활성화
+    enableLogging: false // 운영 모드로 전환
   });
 
+  /**
+   * 초기 데이터를 로드합니다.
+   */
   const loadInitialData = useCallback(async () => {
     try {
       setConnectionStatus('loading');
@@ -64,23 +71,64 @@ const usePriceData = () => {
   }, [priceWs.status, priceWs.error, loadInitialData]);
 
   useEffect(() => {
-    // WebSocket 데이터 업데이트
+    // 하이브리드 WebSocket 데이터 업데이트 처리
     if (priceWs.data) {
-      console.log('🔍 [usePriceData] 원시 WebSocket 데이터 수신:', priceWs.data);
-      
-      // 새로운 WebSocket 매니저의 표준 메시지 형식 처리
+      const messageType = priceWs.data.type || 'price_update';
       const messageData = priceWs.data.data || priceWs.data;
       
-      if (Array.isArray(messageData)) {
-        console.log('💰 [usePriceData] 배열 데이터 처리:', messageData.length, '개 코인');
-        console.log('💎 [usePriceData] 첫 번째 코인 샘플:', messageData[0]);
-        setData(messageData);
-        setLastUpdate(new Date());
+      if (messageType === 'major_update') {
+        // Major 코인 즉시 업데이트: 기존 데이터에서 해당 코인만 업데이트
+        if (Array.isArray(messageData)) {
+          setData(prevData => {
+            // prevData가 배열이 아닌 경우 안전하게 처리
+            if (!Array.isArray(prevData)) {
+              console.warn('prevData is not an array, initializing with messageData');
+              return messageData;
+            }
+            
+            const updatedData = [...prevData];
+            messageData.forEach(newCoin => {
+              const index = updatedData.findIndex(coin => coin.symbol === newCoin.symbol);
+              if (index !== -1) {
+                updatedData[index] = { ...updatedData[index], ...newCoin };
+              }
+            });
+            return updatedData;
+          });
+          console.log(`⚡ Major 코인 즉시 업데이트: ${messageData.map(c => c.symbol).join(', ')}`);
+        }
+      } else if (messageType === 'minor_batch') {
+        // Minor 코인 배치 업데이트: 기존 데이터에서 해당 코인들만 업데이트
+        if (Array.isArray(messageData)) {
+          setData(prevData => {
+            // prevData가 배열이 아닌 경우 안전하게 처리
+            if (!Array.isArray(prevData)) {
+              console.warn('prevData is not an array, initializing with messageData');
+              return messageData;
+            }
+            
+            const updatedData = [...prevData];
+            messageData.forEach(newCoin => {
+              const index = updatedData.findIndex(coin => coin.symbol === newCoin.symbol);
+              if (index !== -1) {
+                updatedData[index] = { ...updatedData[index], ...newCoin };
+              }
+            });
+            return updatedData;
+          });
+          console.log(`📦 Minor 코인 배치 업데이트: ${messageData.length}개`);
+        }
       } else {
-        console.warn('⚠️ [usePriceData] 예상과 다른 데이터 형식:', typeof messageData, messageData);
+        // 기존 방식 (호환성 유지): 전체 데이터 교체
+        if (Array.isArray(messageData)) {
+          console.log(`💰 전체 가격 데이터 업데이트: ${messageData.length}개 코인`);
+          setData(messageData);
+        } else {
+          console.warn('⚠️ 예상치 못한 데이터 형식:', typeof messageData);
+        }
       }
-    } else {
-      console.log('🔍 [usePriceData] WebSocket 데이터가 null/undefined');
+      
+      setLastUpdate(new Date());
     }
   }, [priceWs.data]);
 

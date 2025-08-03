@@ -7,6 +7,12 @@
 import asyncio
 import json
 import aiohttp
+try:
+    import websockets  # type: ignore
+    websocket_connect = getattr(websockets, 'connect', None)
+except ImportError:
+    websockets = None
+    websocket_connect = None
 from datetime import datetime
 from typing import Dict, List, Optional, Deque
 from collections import defaultdict, deque
@@ -15,10 +21,94 @@ import logging
 logger = logging.getLogger(__name__)
 
 # 통합된 청산 데이터 저장용 (메모리 기반, 최근 24시간)
-liquidation_stats_data: Dict[str, Deque[Dict]] = defaultdict(lambda: deque(maxlen=1440))  # 1분 버킷 * 24시간 = 1440
+liquidation_stats_data: Dict[str, Deque[Dict]] = defaultdict(lambda: deque(maxlen=24))  # 1시간 버킷 * 24시간 = 24
 
 # WebSocket 연결 관리자
 liquidation_websocket_manager = None
+
+# Binance 실제 청산 데이터 수집을 위한 부분 체결 추적
+binance_partial_fills: Dict[str, Dict] = {}  # 주문 ID별 부분 체결 상태 추적
+
+# 멀티팩터 동적 캘리브레이션 모델 파라미터
+CALIBRATION_PARAMS = {
+    # α 값을 15-20배 상향, β 값을 1/10으로 하향 - 실제 청산 규모($5.53M)에 맞춰 대폭 조정
+    'binance': {'α': 0.0000002, 'β': 120000000, 'γ': 10.0, 'κ': 0.5},     # 최대 거래소 - α 20배 증가
+    'bybit': {'α': 0.0000003, 'β': 100000000, 'γ': 12.0, 'κ': 0.6},       # 2위 거래소 - α 20배 증가  
+    'okx': {'α': 0.00000012, 'β': 80000000, 'γ': 8.0, 'κ': 0.4},          # 3위 거래소 - α 15배 증가
+    'bitmex': {'α': 0.0000006, 'β': 50000000, 'γ': 20.0, 'κ': 0.8},       # 높은 레버리지 - α 20배 증가
+    'bitget': {'α': 0.00000024, 'β': 70000000, 'γ': 15.0, 'κ': 0.7},      # 신흥 거래소 - α 20배 증가
+    'hyperliquid': {'α': 0.00000008, 'β': 30000000, 'γ': 5.0, 'κ': 0.3}   # DeFi 거래소 - α 16배 증가
+}
+
+# 거래소별 청산 시뮬레이션 특성 파라미터 (기존 백업용)
+EXCHANGE_LIQUIDATION_PROFILES = {
+    'binance': {
+        'base_liquidation_rate': 0.001,     # 최대 거래소, 높은 청산 비율
+        'volatility_multiplier': 2.0,       # 높은 변동성 승수
+        'long_bias': 0.50,                  # 균형잡힌 롱/숏 비율
+        'leverage_factor': 25.0,            # 평균 레버리지
+        'liquidation_threshold': 0.03,      # 3% 가격 변동 시 청산 증가
+        'market_hours_factor': 1.0,         # 글로벌 거래소
+        'weekend_factor': 0.8,              # 주말 청산 감소
+        'min_liquidation_size': 500,        # 최소 청산 크기 ($)
+        'max_liquidation_size': 10000000,   # 최대 청산 크기 ($)
+    },
+    'bybit': {
+        'base_liquidation_rate': 0.0008,    # 거래량 대비 기본 청산 비율 (0.08%)
+        'volatility_multiplier': 1.8,       # 변동성 승수
+        'long_bias': 0.45,                  # 롱 청산 비율 (45% 롱, 55% 숏)
+        'leverage_factor': 25.0,            # 평균 레버리지
+        'liquidation_threshold': 0.04,      # 4% 가격 변동 시 청산 증가
+        'market_hours_factor': 0.7,         # 아시아 시간 가중치
+        'weekend_factor': 0.6,              # 주말 청산 감소
+        'min_liquidation_size': 100,        # 최소 청산 크기 ($)
+        'max_liquidation_size': 2000000,    # 최대 청산 크기 ($)
+    },
+    'okx': {
+        'base_liquidation_rate': 0.0006,
+        'volatility_multiplier': 1.5,
+        'long_bias': 0.48,
+        'leverage_factor': 20.0,
+        'liquidation_threshold': 0.035,
+        'market_hours_factor': 0.8,
+        'weekend_factor': 0.65,
+        'min_liquidation_size': 50,
+        'max_liquidation_size': 1500000,
+    },
+    'bitmex': {
+        'base_liquidation_rate': 0.0012,    # BitMEX는 높은 레버리지로 청산 많음
+        'volatility_multiplier': 2.2,
+        'long_bias': 0.42,                  # 숏 포지션 선호 경향
+        'leverage_factor': 50.0,
+        'liquidation_threshold': 0.02,      # 2% 변동으로도 청산
+        'market_hours_factor': 0.9,         # 글로벌 거래소
+        'weekend_factor': 0.75,
+        'min_liquidation_size': 200,
+        'max_liquidation_size': 5000000,
+    },
+    'bitget': {
+        'base_liquidation_rate': 0.0007,
+        'volatility_multiplier': 1.6,
+        'long_bias': 0.50,
+        'leverage_factor': 30.0,
+        'liquidation_threshold': 0.038,
+        'market_hours_factor': 0.75,
+        'weekend_factor': 0.7,
+        'min_liquidation_size': 80,
+        'max_liquidation_size': 1800000,
+    },
+    'hyperliquid': {
+        'base_liquidation_rate': 0.0004,    # 신규 거래소로 청산 적음
+        'volatility_multiplier': 1.3,
+        'long_bias': 0.52,
+        'leverage_factor': 15.0,
+        'liquidation_threshold': 0.045,
+        'market_hours_factor': 0.85,
+        'weekend_factor': 0.8,
+        'min_liquidation_size': 150,
+        'max_liquidation_size': 800000,
+    }
+}
 
 
 class LiquidationStatsCollector:
@@ -35,6 +125,11 @@ class LiquidationStatsCollector:
         self.is_running = False
         self.websocket_manager = None
         self.last_24h_stats = {}  # 이전 통계 저장용
+        self.binance_websocket_task = None  # Binance 실시간 청산 수집 태스크
+        self.market_volatility_cache = {}  # 시장 변동성 캐시
+        self.liquidation_history = defaultdict(list)  # 거래소별 청산 히스토리
+        self.market_data_cache = {}  # 미결제약정, 펀딩비율 등 캐시
+        self.calibration_history = defaultdict(list)  # 캘리브레이션 히스토리
         
     def set_websocket_manager(self, manager):
         """수집기가 사용할 WebSocket 관리자 인스턴스를 설정합니다.
@@ -60,14 +155,20 @@ class LiquidationStatsCollector:
         self.is_running = True
         logger.info("📊 청산 데이터 수집 서비스 시작")
         
-        # 통계 기반 수집 태스크
-        task = asyncio.create_task(self.collect_liquidation_statistics())
+        # 통계 기반 수집 태스크 (모든 거래소 통일)
+        stats_task = asyncio.create_task(self.collect_liquidation_statistics())
         
-        logger.debug("Starting statistical liquidation collection task...")
+        # 실시간 WebSocket 수집 비활성화 - 모든 거래소를 멀티팩터 시뮬레이션으로 통일
+        # self.binance_websocket_task = asyncio.create_task(self.collect_binance_real_liquidations())
+        
+        logger.debug("Starting statistical liquidation collection task for all exchanges...")
+        logger.info("📊 모든 거래소에 멀티팩터 시뮬레이션 모델 적용")
+        
         try:
-            await task
+            # 통계 기반 태스크만 실행
+            await stats_task
         except Exception as e:
-            logger.error(f"Error in statistical liquidation collection task: {e}")
+            logger.error(f"Error in liquidation collection tasks: {e}")
             import traceback
             traceback.print_exc()
     
@@ -81,9 +182,10 @@ class LiquidationStatsCollector:
         
         while self.is_running:
             try:
-                # 모든 거래소의 24시간 청산 통계를 병렬로 수집
+                # 거래소별 24시간 청산 통계를 병렬로 수집
+                # 모든 거래소에 멀티팩터 시뮬레이션 모델 적용 (데이터 일관성 확보)
                 tasks = [
-                    self.fetch_binance_24h_stats(),
+                    self.fetch_binance_24h_stats(),  # 시뮬레이션 모델 적용을 위해 활성화
                     self.fetch_bybit_24h_stats(), 
                     self.fetch_okx_24h_stats(),
                     self.fetch_bitmex_24h_stats(),
@@ -103,12 +205,584 @@ class LiquidationStatsCollector:
                 for exc in failed_exceptions:
                     logger.error(f"청산 통계 수집 중 예외 발생: {exc}")
                 
-                # 5분마다 갱신
-                await asyncio.sleep(300)
+                # 1시간마다 갱신 (3600초)
+                await asyncio.sleep(3600)
                 
             except Exception as e:
                 logger.error(f"24시간 청산 통계 수집 오류: {e}")
                 await asyncio.sleep(60)
+    
+    async def collect_binance_real_liquidations(self):
+        """Binance 실시간 청산 데이터를 WebSocket으로 수집합니다.
+        
+        부분 체결을 고려하여 실제 체결된 수량(l)만큼의 USD 임팩트를 계산합니다.
+        """
+        logger.info("🚀 Binance 실시간 청산 WebSocket 수집 시작")
+        
+        while self.is_running:
+            try:
+                if websocket_connect is None:
+                    logger.error("websockets 라이브러리가 설치되지 않았습니다.")
+                    await asyncio.sleep(60)
+                    continue
+                    
+                uri = "wss://fstream.binance.com/ws/!forceOrder@arr"
+                
+                async with websocket_connect(uri) as websocket:
+                    logger.info("✅ Binance 청산 WebSocket 연결 성공")
+                    
+                    async for message in websocket:
+                        try:
+                            liquidation_data = json.loads(message)
+                            await self.process_binance_liquidation_event(liquidation_data)
+                        except Exception as e:
+                            logger.error(f"청산 이벤트 처리 오류: {e}")
+                            
+            except Exception as e:
+                logger.error(f"Binance 청산 WebSocket 연결 오류: {e}")
+                logger.info("🔄 5초 후 재연결 시도...")
+                await asyncio.sleep(5)
+    
+    async def process_binance_liquidation_event(self, data):
+        """Binance 청산 이벤트를 처리하고 부분 체결을 고려합니다.
+        
+        Args:
+            data: Binance forceOrder 이벤트 데이터
+        """
+        try:
+            # 청산 주문 정보 추출
+            order_info = data.get('o', {})
+            symbol = order_info.get('s', '')  # BTCUSDT
+            side = order_info.get('S', '')    # SELL(롱청산) or BUY(숏청산)
+            
+            # 부분 체결 정보
+            last_filled_qty = float(order_info.get('l', 0))      # 이번에 체결된 수량
+            cumulative_filled_qty = float(order_info.get('z', 0)) # 누적 체결 수량
+            original_qty = float(order_info.get('q', 0))         # 원래 주문 수량
+            avg_price = float(order_info.get('ap', 0))           # 평균 체결 가격
+            execution_type = order_info.get('X', '')             # FILLED, PARTIALLY_FILLED
+            
+            timestamp = data.get('E', 0)  # 이벤트 시간 (밀리초)
+            
+            # USDT 페어만 처리
+            if 'USDT' not in symbol or last_filled_qty <= 0:
+                return
+            
+            # 실제 체결된 수량 기반 USD 임팩트 계산
+            usd_impact = last_filled_qty * avg_price
+            
+            # 1시간 버킷으로 집계
+            hour_bucket = (timestamp // 3600000) * 3600000
+            
+            # 롱/숏 청산 분류
+            if side == "SELL":  # 롱 포지션 청산
+                await self.add_real_liquidation_to_bucket(
+                    hour_bucket, "binance", "long", usd_impact, 1
+                )
+                liquidation_type = "롱청산"
+            elif side == "BUY":  # 숏 포지션 청산
+                await self.add_real_liquidation_to_bucket(
+                    hour_bucket, "binance", "short", usd_impact, 1
+                )
+                liquidation_type = "숏청산"
+            else:
+                return
+            
+            # 개발 모드에서만 상세 로그 (주요 청산만)
+            if usd_impact > 10000:  # $10K 이상 청산만 로그
+                fill_status = "완전체결" if execution_type == "FILLED" else f"부분체결({cumulative_filled_qty:.3f}/{original_qty:.3f})"
+                logger.info(
+                    f"💥 Binance {liquidation_type}: {symbol} ${usd_impact:,.0f} "
+                    f"({last_filled_qty:.3f} × ${avg_price:,.2f}) [{fill_status}]"
+                )
+                
+        except Exception as e:
+            logger.error(f"Binance 청산 이벤트 처리 실패: {e}")
+    
+    async def add_real_liquidation_to_bucket(self, hour_bucket: int, exchange: str, side: str, usd_value: float, count: int):
+        """실제 청산 데이터를 시간 버킷에 추가합니다.
+        
+        Args:
+            hour_bucket: 1시간 단위 타임스탬프
+            exchange: 거래소 이름
+            side: 'long' 또는 'short'
+            usd_value: USD 청산 가치
+            count: 청산 건수
+        """
+        try:
+            # 기존 버킷 찾기
+            existing_bucket = None
+            for bucket_item in liquidation_stats_data[exchange]:
+                if bucket_item['timestamp'] == hour_bucket:
+                    existing_bucket = bucket_item
+                    break
+            
+            if existing_bucket is None:
+                # 새 버킷 생성
+                new_bucket = {
+                    'timestamp': hour_bucket,
+                    'exchange': exchange,
+                    'long_volume': usd_value if side == 'long' else 0,
+                    'short_volume': usd_value if side == 'short' else 0,
+                    'long_count': count if side == 'long' else 0,
+                    'short_count': count if side == 'short' else 0,
+                    'is_real_data': True  # 실제 데이터 표시
+                }
+                liquidation_stats_data[exchange].append(new_bucket)
+            else:
+                # 기존 버킷 업데이트
+                if side == 'long':
+                    existing_bucket['long_volume'] += usd_value
+                    existing_bucket['long_count'] += count
+                else:
+                    existing_bucket['short_volume'] += usd_value
+                    existing_bucket['short_count'] += count
+                existing_bucket['is_real_data'] = True
+            
+            # 실시간 브로드캐스트
+            if self.websocket_manager:
+                await self.broadcast_liquidation_update({
+                    'exchange': exchange,
+                    'side': side,
+                    'usd_value': usd_value,
+                    'timestamp': hour_bucket,
+                    'type': 'real_liquidation'
+                })
+                
+        except Exception as e:
+            logger.error(f"실제 청산 데이터 버킷 추가 실패: {e}")
+    
+    def calculate_market_volatility(self, exchange: str, current_volume: float) -> float:
+        """시장 변동성을 계산합니다.
+        
+        Args:
+            exchange: 거래소 이름
+            current_volume: 현재 거래량
+            
+        Returns:
+            변동성 지수 (1.0 = 평균, >1.0 = 높은 변동성)
+        """
+        history = self.liquidation_history[exchange]
+        if len(history) < 2:
+            return 1.0
+        
+        # 최근 5개 데이터 포인트의 거래량 변동성 계산
+        recent_volumes = [h['volume'] for h in history[-5:]]
+        if len(recent_volumes) < 2:
+            return 1.0
+            
+        avg_volume = sum(recent_volumes) / len(recent_volumes)
+        if avg_volume == 0:
+            return 1.0
+            
+        # 표준편차 기반 변동성
+        variance = sum((v - avg_volume) ** 2 for v in recent_volumes) / len(recent_volumes)
+        std_dev = variance ** 0.5
+        volatility = min(3.0, max(0.3, 1.0 + (std_dev / avg_volume)))
+        
+        return volatility
+    
+    def get_time_factor(self) -> Dict[str, float]:
+        """시간대별 가중치를 계산합니다.
+
+        Returns:
+            시간대, 주말, 변동성 증폭 계수를 포함하는 딕셔너리.
+        """
+        import datetime
+        now = datetime.datetime.now()
+        hour = now.hour
+        weekday = now.weekday()  # 0=월요일, 6=일요일
+        
+        # 시간대별 가중치 (UTC 기준)
+        if 0 <= hour <= 6:      # 아시아 오전
+            time_factor = 1.2
+        elif 7 <= hour <= 14:   # 유럽 오전
+            time_factor = 1.1
+        elif 15 <= hour <= 22:  # 미국 오전
+            time_factor = 1.3   # 가장 활발한 시간
+        else:                   # 새벽
+            time_factor = 0.7
+            
+        # 주말 감소
+        weekend_factor = 0.6 if weekday >= 5 else 1.0
+        
+        return {
+            'time_factor': time_factor,
+            'weekend_factor': weekend_factor,
+            'volatility_boost': 1.5 if 15 <= hour <= 22 else 1.0
+        }
+    
+    def simulate_realistic_liquidations(self, exchange: str, volume_24h: float, 
+                                      timestamp: int) -> Dict[str, float]:
+        """실제 시장 특성을 반영한 청산 시뮬레이션.
+        
+        Args:
+            exchange: 거래소 이름
+            volume_24h: 24시간 거래량
+            timestamp: 현재 타임스탬프
+            
+        Returns:
+            청산 데이터 (long_volume, short_volume, long_count, short_count)
+        """
+        profile = EXCHANGE_LIQUIDATION_PROFILES.get(exchange, {})
+        if not profile:
+            return {'long_volume': 0, 'short_volume': 0, 'long_count': 0, 'short_count': 0}
+        
+        # 시장 변동성 계산
+        volatility = self.calculate_market_volatility(exchange, volume_24h)
+        
+        # 시간대 가중치
+        time_factors = self.get_time_factor()
+        
+        # 기본 청산량 계산 (거래량 * 기본 청산 비율)
+        base_liquidation = volume_24h * profile['base_liquidation_rate']
+        
+        # 변동성, 시간대, 주말 요인 적용
+        adjusted_liquidation = (
+            base_liquidation * 
+            (volatility ** profile['volatility_multiplier']) *
+            time_factors['time_factor'] *
+            time_factors['weekend_factor'] *
+            profile['market_hours_factor']
+        )
+        
+        # 무작위성 추가 (±30% 범위)
+        import random
+        random_factor = random.uniform(0.7, 1.3)
+        total_liquidation = adjusted_liquidation * random_factor
+        
+        # 최소/최대 제한 적용
+        total_liquidation = max(profile['min_liquidation_size'], 
+                              min(profile['max_liquidation_size'], total_liquidation))
+        
+        # 롱/숏 분배 (시장 상황에 따라 동적 조정)
+        long_bias = profile['long_bias']
+        
+        # 변동성이 높을 때 롱 청산 증가 (레버리지 효과)
+        if volatility > 1.5:
+            long_bias += 0.1  # 롱 청산 10% 증가
+        elif volatility < 0.8:
+            long_bias -= 0.05  # 롱 청산 5% 감소
+            
+        long_bias = max(0.2, min(0.8, long_bias))  # 20-80% 범위 제한
+        
+        # 개별 청산 이벤트 시뮬레이션
+        long_volume, short_volume = 0, 0
+        long_count, short_count = 0, 0
+        
+        # 여러 개의 개별 청산으로 분할
+        num_liquidations = max(1, int(total_liquidation / 50000))  # 5만달러당 1건
+        num_liquidations = min(200, num_liquidations)  # 최대 200건 (실제 청산 빈도 반영)
+        
+        for _ in range(num_liquidations):
+            # 개별 청산 크기 (로그 정규분포)
+            liquidation_size = random.lognormvariate(
+                mu=10.0,  # 평균 약 $22,000 (실제 청산 규모 반영)
+                sigma=1.8  # 표준편차 증가로 더 큰 변동성
+            )
+            liquidation_size = max(100, min(500000, liquidation_size))
+            
+            # 롱/숏 결정
+            if random.random() < long_bias:
+                long_volume += liquidation_size
+                long_count += 1
+            else:
+                short_volume += liquidation_size
+                short_count += 1
+        
+        # 총량 조정
+        total_simulated = long_volume + short_volume
+        if total_simulated > 0:
+            scale_factor = total_liquidation / total_simulated
+            long_volume *= scale_factor
+            short_volume *= scale_factor
+        
+        # 히스토리 업데이트 (최근 24시간 유지)
+        self.liquidation_history[exchange].append({
+            'timestamp': timestamp,
+            'volume': volume_24h,
+            'liquidation': total_liquidation,
+            'volatility': volatility
+        })
+        
+        # 24시간 이상 된 데이터 제거
+        cutoff_time = timestamp - (24 * 3600 * 1000)
+        self.liquidation_history[exchange] = [
+            h for h in self.liquidation_history[exchange] 
+            if h['timestamp'] > cutoff_time
+        ]
+        
+        return {
+            'long_volume': long_volume,
+            'short_volume': short_volume,
+            'long_count': long_count,
+            'short_count': short_count,
+            'volatility': volatility,
+            'time_factor': time_factors['time_factor']
+        }
+    
+    async def fetch_market_multifactor_data(self, exchange: str, volume_24h: float) -> Dict[str, float]:
+        """멀티팩터 모델을 위한 시장 데이터 수집.
+        
+        Args:
+            exchange: 거래소 이름
+            volume_24h: 24시간 거래량
+            
+        Returns:
+            Dict containing OI, funding_rate, volatility, etc.
+        """
+        try:
+            # 거래소별 API 엔드포인트
+            api_endpoints = {
+                'binance': {
+                    'oi': 'https://fapi.binance.com/fapi/v1/openInterest?symbol=BTCUSDT',
+                    'funding': 'https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&limit=1'
+                },
+                'bybit': {
+                    'oi': 'https://api.bybit.com/v5/market/open-interest?category=linear&symbol=BTCUSDT',
+                    'funding': 'https://api.bybit.com/v5/market/funding/history?category=linear&symbol=BTCUSDT&limit=1'
+                },
+                'okx': {
+                    'oi': 'https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=BTC-USDT-SWAP',
+                    'funding': 'https://www.okx.com/api/v5/public/funding-rate?instId=BTC-USDT-SWAP'
+                },
+                'bitmex': {
+                    'oi': 'https://www.bitmex.com/api/v1/instrument?symbol=XBTUSD',
+                    'funding': 'https://www.bitmex.com/api/v1/funding?symbol=XBTUSD&count=1&reverse=true'
+                }
+            }
+            
+            if exchange not in api_endpoints:
+                return self._get_default_market_data(exchange, volume_24h)
+            
+            market_data = {}
+            endpoints = api_endpoints[exchange]
+            
+            async with aiohttp.ClientSession() as session:
+                # 미결제약정 (Open Interest) 수집
+                try:
+                    async with session.get(endpoints['oi'], timeout=5) as response:
+                        if response.status == 200:
+                            oi_data = await response.json()
+                            market_data['open_interest'] = self._extract_open_interest(exchange, oi_data)
+                        else:
+                            market_data['open_interest'] = volume_24h * 0.5  # 추정치
+                except Exception:
+                    market_data['open_interest'] = volume_24h * 0.5
+                
+                # 펀딩 비율 (Funding Rate) 수집
+                try:
+                    async with session.get(endpoints['funding'], timeout=5) as response:
+                        if response.status == 200:
+                            funding_data = await response.json()
+                            market_data['funding_rate'] = self._extract_funding_rate(exchange, funding_data)
+                        else:
+                            market_data['funding_rate'] = 0.0001  # 기본값 0.01%
+                except Exception:
+                    market_data['funding_rate'] = 0.0001
+                
+                # 가격 변동성 계산 (최근 거래량 기반)
+                market_data['volatility'] = self.calculate_market_volatility(exchange, volume_24h)
+                
+                return market_data
+                
+        except Exception as e:
+            logger.error(f"{exchange} 멀티팩터 데이터 수집 오류: {e}")
+            return self._get_default_market_data(exchange, volume_24h)
+    
+    def _extract_open_interest(self, exchange: str, data: dict) -> float:
+        """거래소별 미결제약정 데이터 추출."""
+        try:
+            if exchange == 'binance':
+                return float(data.get('openInterest', 0))
+            elif exchange == 'bybit':
+                return float(data.get('result', {}).get('list', [{}])[0].get('openInterest', 0))
+            elif exchange == 'okx':
+                return float(data.get('data', [{}])[0].get('oi', 0))
+            elif exchange == 'bitmex':
+                return float(data[0].get('openInterest', 0)) if data else 0
+            return 0
+        except Exception:
+            return 0
+    
+    def _extract_funding_rate(self, exchange: str, data: dict) -> float:
+        """거래소별 펀딩 비율 데이터 추출."""
+        try:
+            if exchange == 'binance':
+                return float(data[0].get('fundingRate', 0)) if data else 0
+            elif exchange == 'bybit':
+                return float(data.get('result', {}).get('list', [{}])[0].get('fundingRate', 0))
+            elif exchange == 'okx':
+                return float(data.get('data', [{}])[0].get('fundingRate', 0))
+            elif exchange == 'bitmex':
+                return float(data[0].get('fundingRate', 0)) if data else 0
+            return 0
+        except Exception:
+            return 0
+    
+    def _get_default_market_data(self, exchange: str, volume_24h: float) -> Dict[str, float]:
+        """기본 시장 데이터 (API 실패 시)."""
+        return {
+            'open_interest': volume_24h * 0.5,  # 거래량의 50% 추정
+            'funding_rate': 0.0001,  # 0.01% 기본값
+            'volatility': 1.0  # 정상 변동성
+        }
+    
+    def calculate_multifactor_liquidation_lambda(self, exchange: str, volume: float, 
+                                                market_data: Dict[str, float]) -> float:
+        """멀티팩터 모델 기반 청산 강도 λ(t) 계산.
+        
+        λ(t) = V(t) × α × (OI(t)/(OI(t)+β)) × (1+γ|F(t)|) × (1+κσ(t))
+        
+        Args:
+            exchange: 거래소 이름
+            volume: V(t) - 현재 거래량
+            market_data: OI, 펀딩비율, 변동성 등
+            
+        Returns:
+            청산 강도 λ(t)
+        """
+        params = CALIBRATION_PARAMS.get(exchange, CALIBRATION_PARAMS['bybit'])
+        
+        # V(t) - 거래량
+        V_t = volume
+        
+        # OI(t) - 미결제약정
+        OI_t = market_data.get('open_interest', V_t * 0.5)
+        
+        # F(t) - 펀딩 비율
+        F_t = market_data.get('funding_rate', 0.0001)
+        
+        # σ(t) - 변동성
+        sigma_t = market_data.get('volatility', 1.0)
+        
+        # 파라미터 추출
+        α = params['α']
+        β = params['β']
+        γ = params['γ']
+        κ = params['κ']
+        
+        # λ(t) 계산
+        oi_factor = OI_t / (OI_t + β)
+        funding_factor = 1 + γ * abs(F_t)
+        volatility_factor = 1 + κ * sigma_t
+        
+        lambda_t = V_t * α * oi_factor * funding_factor * volatility_factor
+        
+        # 디버깅 로그 (개발용)
+        if exchange == 'bybit':  # Bybit 예시로 디버깅
+            logger.debug(f"🔍 {exchange} λ(t) 계산: V_t={V_t/1e6:.1f}M, α={α:.6f}, "
+                        f"OI_factor={oi_factor:.3f}, funding_factor={funding_factor:.3f}, "
+                        f"volatility_factor={volatility_factor:.3f}, λ(t)={lambda_t:.2e}")
+        
+        return max(0, lambda_t)
+    
+    def poisson_liquidation_sampling(self, lambda_t: float, time_window: int = 3600) -> int:
+        """Poisson 분포 기반 청산 이벤트 수 샘플링.
+        
+        Args:
+            lambda_t: 청산 강도
+            time_window: 시간 윈도우 (초, 기본 1시간)
+            
+        Returns:
+            생성된 청산 이벤트 수
+        """
+        import random
+        import math
+        
+        # 시간 윈도우에 맞춘 평균 이벤트 수
+        mean_events = lambda_t * (time_window / 3600)  # 1시간 기준으로 정규화
+        
+        # Poisson 샘플링 (Knuth 알고리즘)
+        if mean_events > 30:  # 큰 λ에 대해서는 정규분포 근사
+            events = max(0, int(random.normalvariate(mean_events, math.sqrt(mean_events))))
+        else:
+            # 표준 Poisson 샘플링
+            L = math.exp(-mean_events)
+            k = 0
+            p = 1.0
+            
+            while p > L:
+                k += 1
+                p *= random.random()
+            
+            events = k - 1
+        
+        return max(0, min(500, events))  # 0-500 범위 제한 (실제 청산 규모 반영)
+    
+    async def simulate_multifactor_liquidations(self, exchange: str, volume_24h: float, 
+                                              timestamp: int) -> Dict[str, float]:
+        """멀티팩터 + 동적 캘리브레이션 청산 시뮬레이션.
+        
+        Args:
+            exchange: 거래소 이름
+            volume_24h: 24시간 거래량
+            timestamp: 현재 타임스탬프
+            
+        Returns:
+            청산 데이터 (long_volume, short_volume, long_count, short_count)
+        """
+        try:
+            # 1. 멀티팩터 시장 데이터 수집
+            market_data = await self.fetch_market_multifactor_data(exchange, volume_24h)
+            
+            # 2. 청산 강도 λ(t) 계산
+            lambda_t = self.calculate_multifactor_liquidation_lambda(exchange, volume_24h, market_data)
+            
+            # 3. Poisson 샘플링으로 이벤트 수 결정
+            total_events = self.poisson_liquidation_sampling(lambda_t)
+            
+            if total_events == 0:
+                return {'long_volume': 0, 'short_volume': 0, 'long_count': 0, 'short_count': 0}
+            
+            # 4. 롱/숏 분배 (펀딩비율 기반 동적 조정)
+            funding_rate = market_data.get('funding_rate', 0.0001)
+            base_long_ratio = EXCHANGE_LIQUIDATION_PROFILES[exchange]['long_bias']
+            
+            # 펀딩비율이 양수면 롱 포지션 많음 → 롱 청산 증가
+            if funding_rate > 0.0002:  # 0.02% 이상
+                long_ratio = min(0.8, base_long_ratio + funding_rate * 100)
+            elif funding_rate < -0.0002:  # -0.02% 이하
+                long_ratio = max(0.2, base_long_ratio + funding_rate * 100)
+            else:
+                long_ratio = base_long_ratio
+            
+            # 5. 개별 청산 크기 및 분배
+            import random
+            long_volume, short_volume = 0, 0
+            long_count, short_count = 0, 0
+            
+            for _ in range(total_events):
+                # 변동성 기반 청산 크기 조정
+                volatility = market_data.get('volatility', 1.0)
+                size_multiplier = 1.0 + (volatility - 1.0) * 0.5
+                
+                # 로그 정규분포 청산 크기 (실제 청산 규모에 맞춰 조정)
+                base_size = random.lognormvariate(mu=9.5, sigma=1.2) * size_multiplier  # 평균 ~$13K
+                liquidation_size = max(100, min(500000, base_size))  # $100 - $500K 범위 (실제 청산 규모)
+                
+                # 롱/숏 결정
+                if random.random() < long_ratio:
+                    long_volume += liquidation_size
+                    long_count += 1
+                else:
+                    short_volume += liquidation_size
+                    short_count += 1
+            
+            return {
+                'long_volume': long_volume,
+                'short_volume': short_volume,
+                'long_count': long_count,
+                'short_count': short_count,
+                'lambda_t': lambda_t,
+                'events': total_events,
+                'funding_rate': funding_rate,
+                'volatility': market_data.get('volatility', 1.0)
+            }
+            
+        except Exception as e:
+            logger.error(f"{exchange} 멀티팩터 청산 시뮬레이션 오류: {e}")
+            return {'long_volume': 0, 'short_volume': 0, 'long_count': 0, 'short_count': 0}
     
     # === 24시간 통계 수집 메서드들 (REST API) ===
     
@@ -180,10 +854,10 @@ class LiquidationStatsCollector:
                         if 'data' in data:
                             for ticker in data['data']:
                                 if 'USDT' in ticker.get('instId', ''):
-                                    # OKX volCcy24h가 너무 크므로 적절히 스케일링
+                                    # OKX volCcy24h 스케일링 대폭 수정 (1/100000으로 조정)
                                     vol_ccy_24h = float(ticker.get('volCcy24h', 0))
-                                    # OKX 데이터가 매우 크므로 1/1000000 스케일링 적용
-                                    total_volume += vol_ccy_24h / 1000000
+                                    # 다른 거래소와 비슷한 수준으로 스케일링 대폭 조정
+                                    total_volume += vol_ccy_24h / 100000
                         
                         stats = {
                             'exchange': 'okx',
@@ -365,8 +1039,8 @@ class LiquidationStatsCollector:
             volume = stats['total_volume_24h']
             timestamp = stats['timestamp']
             
-            # 5분 버킷으로 저장
-            minute_bucket = (timestamp // 300000) * 300000  # 5분 단위
+            # 1시간 버킷으로 저장
+            hour_bucket = (timestamp // 3600000) * 3600000  # 1시간 단위
             
             # 이전 통계와 비교하여 증가분 계산
             prev_volume = self.last_24h_stats.get(exchange, 0)
@@ -381,64 +1055,69 @@ class LiquidationStatsCollector:
             # 기존 버킷 데이터 찾기 또는 새로 생성
             existing_bucket = None
             for bucket_item in liquidation_stats_data[exchange]:
-                if bucket_item['timestamp'] == minute_bucket:
+                if bucket_item['timestamp'] == hour_bucket:
                     existing_bucket = bucket_item
                     break
             
             if existing_bucket is None:
-                # 새 버킷 생성 - 현실적인 롱/숏 비율 적용
-                # 30-70% 사이의 랜덤 비율로 롱/숏 분배 (거래소별 다르게)
-                long_ratio = self._calculate_long_short_ratio(exchange, minute_bucket)
-                long_volume = volume_diff * long_ratio
-                short_volume = volume_diff * (1 - long_ratio)
+                # 새 버킷 생성 - 멀티팩터 동적 캘리브레이션 모델
+                liquidation_data = await self.simulate_multifactor_liquidations(
+                    exchange, volume, timestamp
+                )
                 
                 new_bucket = {
-                    'timestamp': minute_bucket,
+                    'timestamp': hour_bucket,
                     'exchange': exchange,
-                    'long_volume': long_volume,
-                    'short_volume': short_volume,
-                    'long_count': 1,
-                    'short_count': 1
+                    'long_volume': liquidation_data['long_volume'],
+                    'short_volume': liquidation_data['short_volume'],
+                    'long_count': liquidation_data['long_count'],
+                    'short_count': liquidation_data['short_count'],
+                    'is_multifactor_simulation': True,  # 멀티팩터 시뮬레이션 표시
+                    'lambda_t': liquidation_data.get('lambda_t', 0),
+                    'events': liquidation_data.get('events', 0),
+                    'funding_rate': liquidation_data.get('funding_rate', 0.0001),
+                    'volatility': liquidation_data.get('volatility', 1.0)
                 }
                 liquidation_stats_data[exchange].append(new_bucket)
-                # logger.info(f"📈 {exchange}: 새 통계 버킷 생성 - 거래량 증가분: ${volume_diff/1000000:.1f}M")
-            else:
-                # 기존 버킷 업데이트 - 현실적인 롱/숏 비율 적용
-                # 30-70% 사이의 랜덤 비율로 롱/숏 분배 (시간별 다르게)
-                long_ratio = self._calculate_long_short_ratio(exchange, minute_bucket, len(liquidation_stats_data[exchange]))
-                long_volume = volume_diff * long_ratio
-                short_volume = volume_diff * (1 - long_ratio)
                 
-                existing_bucket['long_volume'] += long_volume
-                existing_bucket['short_volume'] += short_volume
-                # logger.info(f"📈 {exchange}: 통계 업데이트 - 거래량 증가분: ${volume_diff/1000000:.1f}M")
+                total_liquidation = liquidation_data['long_volume'] + liquidation_data['short_volume']
+                logger.info(f"📈 {exchange}: 새 1시간 멀티팩터 버킷 - 청산량: ${total_liquidation/1000000:.1f}M "
+                           f"(λ={liquidation_data.get('lambda_t', 0):.1e}, "
+                           f"이벤트={liquidation_data.get('events', 0)}건, "
+                           f"펀딩={liquidation_data.get('funding_rate', 0)*10000:.2f}bp)")
+            else:
+                # 기존 버킷 업데이트 - 멀티팩터 동적 캘리브레이션 모델
+                liquidation_data = await self.simulate_multifactor_liquidations(
+                    exchange, volume_diff, timestamp
+                )
+                
+                existing_bucket['long_volume'] += liquidation_data['long_volume']
+                existing_bucket['short_volume'] += liquidation_data['short_volume'] 
+                existing_bucket['long_count'] += liquidation_data['long_count']
+                existing_bucket['short_count'] += liquidation_data['short_count']
+                existing_bucket['is_multifactor_simulation'] = True
+                existing_bucket['lambda_t'] = liquidation_data.get('lambda_t', 0)
+                existing_bucket['events'] = liquidation_data.get('events', 0)
+                existing_bucket['funding_rate'] = liquidation_data.get('funding_rate', 0.0001)
+                existing_bucket['volatility'] = liquidation_data.get('volatility', 1.0)
+                
+                total_liquidation = liquidation_data['long_volume'] + liquidation_data['short_volume']
+                logger.info(f"📈 {exchange}: 1시간 멀티팩터 업데이트 - 청산량: ${total_liquidation/1000000:.1f}M "
+                           f"(λ={liquidation_data.get('lambda_t', 0):.1e}, "
+                           f"이벤트={liquidation_data.get('events', 0)}건, "
+                           f"펀딩={liquidation_data.get('funding_rate', 0)*10000:.2f}bp)")
             
             # 실시간 데이터 브로드캐스트
             if self.websocket_manager:
                 await self.broadcast_liquidation_update({
                     'exchange': exchange,
                     'volume_diff': volume_diff,
-                    'timestamp': minute_bucket
+                    'timestamp': hour_bucket
                 })
                 
         except Exception as e:
             logger.error(f"24시간 통계 저장 오류: {e}")
     
-    def _calculate_long_short_ratio(self, exchange: str, minute_bucket: int, bucket_count: int = 0) -> float:
-        """거래소와 시간에 따른 현실적인 롱/숏 비율을 계산합니다.
-        
-        Args:
-            exchange (str): 거래소 이름
-            minute_bucket (int): 분 단위 버킷 타임스탬프
-            bucket_count (int): 기존 버킷 개수 (기본값: 0)
-            
-        Returns:
-            float: 롱 포지션 비율 (0.3-0.7 사이)
-        """
-        # 해시를 사용한 의사 랜덤 비율 생성 (30-70% 범위)
-        hash_input = f"{exchange}{minute_bucket}{bucket_count}"
-        ratio_seed = hash(hash_input) % 100
-        return 0.3 + (ratio_seed / 100) * 0.4  # 0.3-0.7 범위
     
     async def broadcast_liquidation_update(self, liquidation: dict):
         """새로운 청산 통계 업데이트를 WebSocket을 통해 연결된 클라이언트에 브로드캐스트합니다.
@@ -461,7 +1140,6 @@ class LiquidationStatsCollector:
 
 # 글로벌 수집기 인스턴스
 liquidation_stats_collector = LiquidationStatsCollector()
-
 
 def get_liquidation_data(exchange: Optional[str] = None, limit: int = 60) -> List[Dict]:
     """메모리에 저장된 최근 청산 통계 데이터를 반환합니다.

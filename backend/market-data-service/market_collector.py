@@ -13,7 +13,15 @@ from typing import Dict, Optional, Set
 import aiohttp
 import redis.asyncio as redis
 from bs4 import BeautifulSoup
-from websockets import connect as websockets_connect
+try:
+    import websockets.legacy.client as websockets_client
+    websockets_connect = websockets_client.connect
+except ImportError:
+    try:
+        from websockets import connect as websockets_connect  # type: ignore
+    except ImportError:
+        # websockets 라이브러리가 설치되지 않은 경우
+        websockets_connect = None
 
 from shared_data import SharedMarketData
 
@@ -81,6 +89,11 @@ class MarketDataCollector:
         """업비트 WebSocket 데이터 수집"""
         while self.is_running:
             try:
+                if websockets_connect is None:
+                    logger.error("websockets 라이브러리가 설치되지 않았습니다.")
+                    await asyncio.sleep(30)
+                    continue
+                    
                 logger.info("🟡 업비트 WebSocket 연결 시도")
                 
                 # KRW 마켓 목록 가져오기
@@ -163,6 +176,11 @@ class MarketDataCollector:
         """바이낸스 WebSocket 데이터 수집"""
         while self.is_running:
             try:
+                if websockets_connect is None:
+                    logger.error("websockets 라이브러리가 설치되지 않았습니다.")
+                    await asyncio.sleep(30)
+                    continue
+                    
                 logger.info("🟡 바이낸스 WebSocket 연결 시도")
                 
                 uri = "wss://stream.binance.com:9443/ws/!ticker@arr"

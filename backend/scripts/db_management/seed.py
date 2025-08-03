@@ -26,7 +26,11 @@ def get_db():
 def seed_exchanges(db_session):
     """exchanges.csv 파일에서 거래소 데이터를 읽어 DB에 삽입합니다."""
     # CSV 파일은 backend 폴더에 위치해야 합니다.
-    with open('/app/data/exchanges.csv', 'r', encoding='utf-8') as f:
+    # CSV 파일 경로 설정 (Docker 환경과 로컬 환경 모두 지원)
+    data_dir = '/app/data' if os.path.exists('/app/data') else os.path.join(os.path.dirname(__file__), 'data')
+    exchanges_path = os.path.join(data_dir, 'exchanges.csv')
+    
+    with open(exchanges_path, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
             # 중복 체크
@@ -48,7 +52,11 @@ def seed_exchanges(db_session):
 
 def seed_cryptocurrencies(db_session):
     """cryptocurrencies.csv 파일에서 암호화폐 데이터를 읽어 DB에 삽입합니다."""
-    with open('/app/data/cryptocurrencies.csv', 'r', encoding='utf-8') as f:
+    # CSV 파일 경로 설정 (Docker 환경과 로컬 환경 모두 지원)
+    data_dir = '/app/data' if os.path.exists('/app/data') else os.path.join(os.path.dirname(__file__), 'data')
+    cryptocurrencies_path = os.path.join(data_dir, 'cryptocurrencies.csv')
+    
+    with open(cryptocurrencies_path, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
             # 중복 체크
@@ -57,10 +65,16 @@ def seed_cryptocurrencies(db_session):
                 crypto = Cryptocurrency(
                     crypto_id=row['crypto_id'],
                     symbol=row['symbol'],
-                    name_ko=row['name_ko'],
-                    name_en=row['name_en'],
-                    logo_url=row['logo_url'],
-                    is_active=row['is_active'].upper() == 'TRUE'
+                    name_ko=row.get('name_ko', ''),
+                    name_en=row.get('name_en', ''),
+                    logo_url=row.get('logo_url', ''),
+                    market_cap_rank=int(row['market_cap_rank']) if row.get('market_cap_rank') and row['market_cap_rank'].strip() else None,
+                    circulating_supply=float(row['circulating_supply']) if row.get('circulating_supply') and row['circulating_supply'].strip() else None,
+                    max_supply=float(row['max_supply']) if row.get('max_supply') and row['max_supply'].strip() else None,
+                    category=row.get('category', ''),
+                    website_url=row.get('website_url', ''),
+                    whitepaper_url=row.get('whitepaper_url', ''),
+                    is_active=row.get('is_active', 'TRUE').upper() == 'TRUE'
                 )
                 db_session.add(crypto)
         db_session.commit()

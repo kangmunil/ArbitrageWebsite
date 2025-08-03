@@ -1,0 +1,74 @@
+ 제안: backend/database 디렉토리 생성 및 관련 파일 이동
+
+  backend 디렉토리 아래에 database라는 새로운 디렉토리를 만들고,
+  데이터베이스와 직접적으로 관련된 파일들을 모두 그곳으로 옮기는 것입니다.
+
+  현재 구조 (문제점)
+
+    1 backend/
+    2 └── app/
+    3     ├── database.py         # DB 연결
+    4     ├── models.py           # DB 모델
+    5     ├── schemas.py          # API 스키마 (모델과 강하게 연관)
+    6     ├── main.py             # API 로직
+    7     ├── aggregator.py       # 비즈니스 로직
+    8     ├── services.py         # 비즈니스 로직
+    9     ├── create_db_tables.py # DB 관리 스크립트
+   10     ├── seed.py             # DB 관리 스크립트
+   11     └── ... (수많은 다른 파일들)
+
+  개선된 구조 (제안)
+
+    1 backend/
+    2 ├── app/
+    3 │   ├── main.py
+    4 │   ├── schemas.py
+    5 │   ├── aggregator.py
+    6 │   └── ... (순수 애플리케이션/API 로직)
+    7 │
+    8 └── database/
+    9     ├── __init__.py
+   10     ├── core.py         # (기존 database.py 파일, 이름 변경)
+   11     ├── models.py
+   12     └── scripts/
+   13         ├── __init__.py
+   14         ├── create_db_tables.py
+   15         ├── seed.py
+   16         ├── data_cleanup_step1_backup.py
+   17         └── ... (기타 DB 관리 및 마이그레이션 스크립트)
+
+  작업 계획
+
+  이 구조 변경을 위해 다음 단계를 진행하겠습니다.
+
+   1. 디렉토리 생성:
+       * backend/database 디렉토리를 생성합니다.
+       * backend/database/scripts 디렉토리를 생성합니다.
+
+   2. 파일 이동:
+       * backend/app/database.py -> backend/database/core.py 로 이동 및 이름
+         변경
+       * backend/app/models.py -> backend/database/models.py 로 이동
+       * create_db_tables.py, seed.py, data_cleanup_*.py 등 데이터베이스
+         관리 스크립트들을 backend/database/scripts/ 로 이동
+
+   3. `__init__.py` 파일 생성:
+       * backend/database/__init__.py 와
+         backend/database/scripts/__init__.py 파일을 생성하여 파이썬
+         패키지로 인식되도록 합니다.
+       * backend/database/__init__.py 에는 from .core import Base, get_db 와
+         같이 주요 객체들을 임포트하여 다른 곳에서 쉽게 가져다 쓸 수 있도록
+         설정합니다.
+
+   4. 임포트 경로 수정:
+       * 가장 중요한 단계입니다. 파일들이 이동됨에 따라, 기존 코드에서 from 
+         .database import ... 또는 from .models import ... 와 같이 사용되던
+         모든 임포트 구문을 새로운 경로로 수정해야 합니다.
+       * 예시:
+           * (변경 전) from .database import get_db
+           * (변경 후) from database.core import get_db
+           * (변경 전) from .models import Cryptocurrency
+           * (변경 후) from database.models import Cryptocurrency
+       * 이 작업은 backend/app/main.py, backend/app/services.py 등 app
+         디렉토리 내의 거의 모든 파일과, database/scripts로 이동된 파일들에
+         적용됩니다.

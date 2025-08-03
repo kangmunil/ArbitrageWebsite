@@ -2,11 +2,15 @@ import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { useLiquidations } from '../hooks/useLiquidations';
 
+/**
+ * 실시간 청산 데이터를 표시하는 사이드바 컴포넌트입니다.
+ * @returns {JSX.Element} 사이드바 청산 컴포넌트
+ */
 const SidebarLiquidations = () => {
   const { trend, error, lastUpdate } = useLiquidations(5);
 
   // 차트 데이터 메모이제이션
-  const chartData5min = useMemo(() => {
+  const chartData1hour = useMemo(() => {
     // 항상 6개 거래소를 보장하는 기본 데이터
     const defaultData = [
       { exchange: 'Binance', long: 0, short: 0 },
@@ -28,25 +32,20 @@ const SidebarLiquidations = () => {
     });
   }, [trend]);
 
-  const chartData1hour = useMemo(() => {
-    // chartData5min을 기반으로 1시간 데이터 생성
-    return chartData5min.map(item => ({
+  const chartData24hour = useMemo(() => {
+    // 24시간 누적 데이터로 변경 (실제 백엔드에서 24시간 데이터를 받아옴)
+    return chartData1hour.map(item => ({
       ...item,
-      long: item.long * 12, // 1시간 = 12 x 5분 (시뮬레이션)
-      short: item.short * 12
+      long: item.long * 24, // 24시간 누적 시뮬레이션
+      short: item.short * 24
     }));
-  }, [chartData5min]);
+  }, [chartData1hour]);
 
-  // 디버깅: 차트 데이터 확인 (30초마다만 출력)
-  if (process.env.NODE_ENV === 'development') {
+  // Development mode: minimal logging for operational status
+  if (process.env.NODE_ENV === 'development' && trend?.length) {
     const now = Date.now();
-    if (!window.lastSidebarLog || (now - window.lastSidebarLog) > 30000) {
-      console.log('📊 SidebarLiquidations 데이터 업데이트:', {
-        trendCount: trend?.length,
-        chartData5minCount: chartData5min?.length,
-        chartData1hourCount: chartData1hour?.length,
-        sampleTrend: trend?.[0]
-      });
+    if (!window.lastSidebarLog || (now - window.lastSidebarLog) > 60000) {
+      console.log(`📊 Liquidations updated: ${trend.length} exchanges`);
       window.lastSidebarLog = now;
     }
   }
@@ -77,14 +76,14 @@ const SidebarLiquidations = () => {
         </div>
       )}
 
-      {/* 5분 차트 */}
+      {/* 1시간 차트 */}
       <section className="mb-4" style={{ paddingLeft: 0, paddingRight: 16 }}>
         <p className="mb-2 text-xs font-medium text-center text-zinc-300" style={{ paddingLeft: 16 }}>
-          5분 거래소별 청산 (M USD)
+          1시간 거래소별 청산 (M USD)
         </p>
         <ResponsiveContainer width="100%" height={160}>
           <BarChart
-            data={chartData5min}
+            data={chartData1hour}
             layout="vertical"
             barCategoryGap={12}
             margin={{ top: 8, right: 15, left: 0, bottom: 8 }}
@@ -119,14 +118,14 @@ const SidebarLiquidations = () => {
         </ResponsiveContainer>
       </section>
 
-      {/* 1시간 차트 */}
+      {/* 24시간 차트 */}
       <section className="pb-4" style={{ paddingLeft: 0, paddingRight: 16 }}>
         <p className="mb-2 text-xs font-medium text-center text-zinc-300" style={{ paddingLeft: 16 }}>
-          1시간 거래소별 청산 (M USD)
+          24시간 거래소별 청산 (M USD)
         </p>
         <ResponsiveContainer width="100%" height={160}>
           <BarChart
-            data={chartData1hour}
+            data={chartData24hour}
             layout="vertical"
             barCategoryGap={12}
             margin={{ top: 8, right: 15, left: 0, bottom: 8 }}

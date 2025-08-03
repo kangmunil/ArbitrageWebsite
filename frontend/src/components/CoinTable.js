@@ -3,26 +3,37 @@ import './CoinTable.css';
 import PriceCell from './PriceCell';
 import PremiumCell from './PremiumCell';
 
-// 개별 코인 행 컴포넌트 (메모이제이션 완전 제거 - 강제 리렌더링)
-const CoinRow = ({ coin, index, getCoinName, formatPrice, formatVolume, exchangeDisplayNames, selectedDomesticExchange, selectedGlobalExchange }) => {
-  // CoinRow 디버그 로그 (XRP만)
-  if (coin.symbol === 'XRP') {
-    console.log(`🎯 [CoinRow] XRP 받은 props: domestic_price=${coin.domestic_price}, global_price=${coin.global_price}`);
-  }
+// 개별 코인 행 컴포넌트 (React.memo로 메모이제이션 적용)
+const CoinRow = React.memo(({ coin, index, getCoinName, formatPrice, formatVolume, exchangeDisplayNames, selectedDomesticExchange, selectedGlobalExchange, isWatched, onToggleWatch, coinImages }) => {
+  /**
+   * 코인 아이콘 URL을 반환합니다.
+   * @param {string} symbol - 코인 심볼
+   * @returns {string | null} 코인 아이콘 URL 또는 null
+   */
   const getCoinIcon = (symbol) => {
-    const iconUrls = {
+    // 1순위: DB에서 가져온 이미지 URL
+    if (coinImages[symbol]) {
+      return coinImages[symbol];
+    }
+    
+    // 2순위: 하드코딩된 백업 URL (DB에 없는 경우)
+    const fallbackUrls = {
       'BTC': 'https://assets.coingecko.com/coins/images/1/standard/bitcoin.png',
       'ETH': 'https://assets.coingecko.com/coins/images/279/standard/ethereum.png',
       'XRP': 'https://assets.coingecko.com/coins/images/44/standard/xrp-symbol-white-128.png',
       'SOL': 'https://assets.coingecko.com/coins/images/4128/standard/solana.png'
     };
-    return iconUrls[symbol] || null;
+    return fallbackUrls[symbol] || null;
   };
 
   return (
     <div
       className={`!grid !grid-cols-12 cursor-pointer gap-x-2 border-t border-gray-700/40 px-3 py-2 transition-colors hover:bg-gray-700/20 ${
-        index === 0 ? 'bg-blue-500/10 hover:bg-blue-500/20' : ''
+        isWatched 
+          ? 'bg-yellow-500/10 hover:bg-yellow-500/20 border-l-4 border-yellow-500' 
+          : index === 0 
+            ? 'bg-blue-500/10 hover:bg-blue-500/20' 
+            : ''
       }`}
     >
       {/* 이름 */}
@@ -45,10 +56,21 @@ const CoinRow = ({ coin, index, getCoinName, formatPrice, formatVolume, exchange
         >
           {coin.symbol.charAt(0)}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate font-medium text-white">{getCoinName(coin.symbol)}</p>
           <p className="truncate text-[11px] text-gray-400">{coin.symbol}</p>
         </div>
+        {/* 관심 코인 별 모양 버튼 */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleWatch(coin.symbol);
+          }}
+          className="flex-shrink-0 text-lg hover:scale-110 transition-transform"
+          title={isWatched ? "관심 코인에서 제거" : "관심 코인으로 추가"}
+        >
+          {isWatched ? '⭐' : '☆'}
+        </button>
       </div>
 
       {/* 현재가 */}
@@ -56,13 +78,13 @@ const CoinRow = ({ coin, index, getCoinName, formatPrice, formatVolume, exchange
         <span className="font-medium text-white">
           <PriceCell 
             price={coin.domestic_price}
-            currency="₩" 
+            currency="₩"
           />
         </span>
         <span className="text-gray-400">
           <PriceCell 
             price={coin.global_price}
-            currency="$" 
+            currency="$"
           />
         </span>
       </div>
@@ -98,7 +120,7 @@ const CoinRow = ({ coin, index, getCoinName, formatPrice, formatVolume, exchange
       </div>
     </div>
   );
-};
+});
 
 /**
  * 코인 가격 비교 테이블 컴포넌트.
@@ -116,13 +138,14 @@ const CoinRow = ({ coin, index, getCoinName, formatPrice, formatVolume, exchange
  */
 const CoinTable = ({ allCoinsData, selectedDomesticExchange, setSelectedDomesticExchange, selectedGlobalExchange, setSelectedGlobalExchange, connectionStatus, lastUpdate, getConnectionStatusColor, reconnect, refresh, error }) => {
   
-  // 3번: CoinTable이 새로운 데이터를 받는지 확인
-  const xrpInData = allCoinsData?.find(coin => coin.symbol === 'XRP');
-  if (xrpInData) {
-    console.log(`🔍 [CoinTable 받은 데이터] XRP allCoinsData: upbit_price=${xrpInData.upbit_price}, 배열길이=${allCoinsData.length}`);
-  }
+  // 운영 모드: 데이터 수신 확인 비활성화
 
-  // formatPrice 함수 (최적화 제거)
+  /**
+   * 가격을 포맷팅합니다.
+   * @param {number} price - 포맷할 가격
+   * @param {string} currency - 통화 (기본값: '₩')
+   * @returns {string} 포맷된 가격 문자열
+   */
   const formatPrice = (price, currency = '₩') => {
     if (!price || price === 0) return 'N/A';
     
@@ -158,11 +181,18 @@ const CoinTable = ({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
   const [sortDirection, setSortDirection] = useState('desc'); // 기본 정렬 방향: 내림차순
   const [showAll, setShowAll] = useState(false); // 더보기 상태
   const [coinNames, setCoinNames] = useState({}); // API에서 가져온 한글 코인명
+  const [coinImages, setCoinImages] = useState({}); // API에서 가져온 코인 이미지 URL
   const [isLoadingNames, setIsLoadingNames] = useState(true); // 한글명 로딩 상태
+  const [watchedCoins, setWatchedCoins] = useState(new Set()); // 관심 코인 목록
   
   // 로그 관련 유틸리티 제거 (더 이상 사용하지 않음)
 
-  // 거래량 포맷팅 함수 (최적화 제거)
+  /**
+   * 거래량을 포맷팅합니다.
+   * @param {number} volume - 포맷할 거래량
+   * @param {string} currency - 통화
+   * @returns {string} 포맷된 거래량 문자열
+   */
   const formatVolume = (volume, currency) => {
     if (!volume || volume <= 0) return 'N/A';
     
@@ -189,29 +219,100 @@ const CoinTable = ({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
     }
   };
 
-  // 컴포넌트 마운트 시 한글 코인명 데이터 로드 (캐시 적용)
+  // 컴포넌트 마운트 시 관심 코인을 localStorage에서 로드
   useEffect(() => {
-    const fetchCoinNames = async () => {
+    try {
+      const savedWatchedCoins = localStorage.getItem('watchedCoins');
+      if (savedWatchedCoins) {
+        setWatchedCoins(new Set(JSON.parse(savedWatchedCoins)));
+      }
+    } catch (error) {
+      console.error('Failed to load watched coins from localStorage:', error);
+    }
+  }, []);
+
+  // 컴포넌트 마운트 시 한글 코인명과 이미지 URL 데이터 로드
+  useEffect(() => {
+    const fetchCoinData = async () => {
       try {
-        // 직접 API 호출 (캐시 제거)
-        const response = await fetch('http://localhost:8000/api/coin-names');
-        const data = await response.json();
+        // 한글 코인명과 이미지 URL 병렬로 가져오기
+        const [namesResponse, imagesResponse] = await Promise.all([
+          fetch('http://localhost:8000/api/coin-names'),
+          fetch('http://localhost:8000/api/coin-images')
+        ]);
         
-        setCoinNames(data);
+        const namesData = await namesResponse.json();
+        const imagesData = await imagesResponse.json();
+        
+        setCoinNames(namesData);
+        setCoinImages(imagesData);
         setIsLoadingNames(false);
-        console.log('한글 코인명 로드');
+        console.log('Coin names and images loaded:', Object.keys(namesData).length, 'names,', Object.keys(imagesData).length, 'images');
       } catch (error) {
-        console.error('한글 코인명 로드 실패:', error);
+        console.error('Failed to load coin data:', error);
         setIsLoadingNames(false);
       }
     };
 
-    fetchCoinNames();
+    fetchCoinData();
   }, []);
 
-  // 한글 코인명 반환 함수 (최적화 제거)
+  /**
+   * 코인 심볼에 해당하는 한글명을 반환합니다.
+   * @param {string} symbol - 코인 심볼
+   * @returns {string} 한글 코인명 또는 심볼
+   */
   const getCoinName = (symbol) => {
     return coinNames[symbol] || symbol;
+  };
+
+  /**
+   * 관심 코인을 토글합니다.
+   * @param {string} symbol - 토글할 코인 심볼
+   */
+  const handleToggleWatch = async (symbol) => {
+    try {
+      const newWatchedCoins = new Set(watchedCoins);
+      
+      if (watchedCoins.has(symbol)) {
+        // 관심 코인에서 제거
+        newWatchedCoins.delete(symbol);
+        console.log(`❌ ${symbol} 관심 코인에서 제거`);
+      } else {
+        // 관심 코인으로 추가 & 백엔드 API 호출
+        newWatchedCoins.add(symbol);
+        console.log(`⭐ ${symbol} 관심 코인으로 추가`);
+        
+        // 백엔드에 우선순위 업데이트 요청
+        try {
+          const response = await fetch(`http://localhost:8000/api/watch-coin/${symbol}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            console.log(`🚀 ${symbol} 서버에서 우선순위 업데이트 완료:`, result.message);
+          } else {
+            console.warn(`⚠️ ${symbol} 서버 우선순위 업데이트 실패`);
+          }
+        } catch (apiError) {
+          console.error('API 호출 오류:', apiError);
+          // API 실패해도 로컬 상태는 유지
+        }
+      }
+      
+      // 상태 업데이트
+      setWatchedCoins(newWatchedCoins);
+      
+      // localStorage에 저장
+      localStorage.setItem('watchedCoins', JSON.stringify([...newWatchedCoins]));
+      
+    } catch (error) {
+      console.error('관심 코인 토글 오류:', error);
+    }
   };
   
   // 디바운스 제거 - 즉시 검색어 업데이트
@@ -249,10 +350,7 @@ const CoinTable = ({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
         }
       }
 
-      // XRP 디버그 로그 활성화 (실시간 애니메이션 테스트용)
-      if (coin.symbol === 'XRP') {
-        console.log(`🔍 [CoinTable processedData] XRP 원본: upbit_price=${coin.upbit_price} → domestic_price=${domesticPrice}`);
-      }
+      // 운영 모드: 상세 로그 비활성화
 
       return {
         ...coin,
@@ -276,8 +374,17 @@ const CoinTable = ({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
       });
     }
 
-    if (sortColumn) {
-      data = data.sort((a, b) => {
+    // 관심 코인을 최상단으로 정렬
+    data = data.sort((a, b) => {
+      const aIsWatched = watchedCoins.has(a.symbol);
+      const bIsWatched = watchedCoins.has(b.symbol);
+      
+      // 관심 코인이 우선
+      if (aIsWatched && !bIsWatched) return -1;
+      if (!aIsWatched && bIsWatched) return 1;
+      
+      // 둘 다 관심 코인이거나 둘 다 일반 코인인 경우 기본 정렬 적용
+      if (sortColumn) {
         let aValue = a[sortColumn];
         let bValue = b[sortColumn];
         
@@ -294,8 +401,10 @@ const CoinTable = ({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
         
         // 숫자 처리
         return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-      });
-    }
+      }
+      
+      return 0;
+    });
 
     return data;
   })(); // 즉시 실행 함수로 변경
@@ -303,12 +412,15 @@ const CoinTable = ({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
   // 실시간 업데이트를 위해 useMemo 제거
   const displayData = showAll ? processedData : processedData.slice(0, 20);
   
-  // GAS 코인이 표시되는지 확인 (디버그용)
-  const gasInDisplay = displayData.find(coin => coin.symbol === 'GAS');
-  if (gasInDisplay) {
-    console.log(`🔍 [CoinTable displayData] GAS 코인 포함됨: domestic_price=${gasInDisplay.domestic_price}`);
-  } else {
-    console.log(`❌ [CoinTable displayData] GAS 코인이 상위 20개에 없음 (전체: ${processedData.length}개)`);
+  // 디버깅: 데이터 구조 분석
+  if (displayData.length === 0) {
+    console.log('No coin data available for display');
+    console.log('allCoinsData length:', allCoinsData?.length);
+    console.log('processedData length:', processedData?.length);
+    if (allCoinsData && allCoinsData.length > 0) {
+      console.log('Sample coin data:', allCoinsData[0]);
+      console.log('Selected exchanges:', selectedDomesticExchange, selectedGlobalExchange);
+    }
   }
 
   if (!allCoinsData || allCoinsData.length === 0 || isLoadingNames) {
@@ -326,6 +438,10 @@ const CoinTable = ({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
     );
   }
 
+  /**
+   * 테이블 정렬을 처리합니다.
+   * @param {string} column - 정렬할 컬럼
+   */
   const handleSort = (column) => {
     if (sortColumn === column) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -335,6 +451,11 @@ const CoinTable = ({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
     }
   };
 
+  /**
+   * 정렬 표시기를 렌더링합니다.
+   * @param {string} column - 정렬 표시기를 렌더링할 컬럼
+   * @returns {string} 정렬 표시기 문자열
+   */
   const renderSortIndicator = (column) => {
     if (sortColumn === column) {
       return sortDirection === 'asc' ? '🔼' : '🔽';
@@ -442,7 +563,7 @@ const CoinTable = ({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
         <div>
           {displayData.map((coin, index) => (
             <CoinRow
-              key={`${coin.symbol}-${coin.domestic_price || 0}-${coin.global_price || 0}`}
+              key={coin.symbol}
               coin={coin}
               index={index}
               getCoinName={getCoinName}
@@ -451,6 +572,9 @@ const CoinTable = ({ allCoinsData, selectedDomesticExchange, setSelectedDomestic
               exchangeDisplayNames={exchangeDisplayNames}
               selectedDomesticExchange={selectedDomesticExchange}
               selectedGlobalExchange={selectedGlobalExchange}
+              isWatched={watchedCoins.has(coin.symbol)}
+              onToggleWatch={handleToggleWatch}
+              coinImages={coinImages}
             />
           ))}
         </div>

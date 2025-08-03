@@ -18,6 +18,13 @@ export const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localho
  * 커스텀 오류 클래스
  */
 export class ApiError extends Error {
+  /**
+   * ApiError 인스턴스를 생성합니다.
+   * @param {string} message - 오류 메시지
+   * @param {number} status - HTTP 상태 코드
+   * @param {string} endpoint - 오류가 발생한 엔드포인트
+   * @param {any} data - 응답 데이터
+   */
   constructor(message, status, endpoint, data = null) {
     super(message);
     this.name = 'ApiError';
@@ -28,19 +35,26 @@ export class ApiError extends Error {
 }
 
 /**
- * 네트워크 연결 상태 확인
+ * 네트워크 연결 상태를 확인합니다.
+ * @returns {boolean} 온라인 상태이면 true, 그렇지 않으면 false
  */
 export const isOnline = () => {
   return navigator.onLine;
 };
 
 /**
- * 지연 함수 (재시도 로직용)
+ * 지정된 시간(ms)만큼 지연합니다.
+ * @param {number} ms - 지연할 시간(ms)
+ * @returns {Promise<void>}
  */
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * 기본 fetch 래퍼 (타임아웃, 재시도 포함)
+ * 타임아웃 및 재시도 로직을 포함한 기본 fetch 래퍼입니다.
+ * @param {string} url - 요청 URL
+ * @param {Object} options - fetch 옵션
+ * @param {number} retryCount - 남은 재시도 횟수
+ * @returns {Promise<Response>} fetch 응답
  */
 export const fetchWithRetry = async (url, options = {}, retryCount = DEFAULT_RETRY_COUNT) => {
   const controller = new AbortController();
@@ -83,7 +97,9 @@ export const fetchWithRetry = async (url, options = {}, retryCount = DEFAULT_RET
 };
 
 /**
- * 재시도 여부 판단
+ * 재시도 여부를 판단합니다.
+ * @param {Error} error - 발생한 오류
+ * @returns {boolean} 재시도해야 하면 true, 그렇지 않으면 false
  */
 const shouldRetry = (error) => {
   // 네트워크 오류나 서버 오류 시 재시도
@@ -93,7 +109,10 @@ const shouldRetry = (error) => {
 };
 
 /**
- * GET 요청
+ * GET 요청을 보냅니다.
+ * @param {string} endpoint - API 엔드포인트
+ * @param {Object} options - fetch 옵션
+ * @returns {Promise<{success: boolean, data: any, status: number}>}
  */
 export const apiGet = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
@@ -113,7 +132,11 @@ export const apiGet = async (endpoint, options = {}) => {
 };
 
 /**
- * POST 요청
+ * POST 요청을 보냅니다.
+ * @param {string} endpoint - API 엔드포인트
+ * @param {Object} body - 요청 본문
+ * @param {Object} options - fetch 옵션
+ * @returns {Promise<{success: boolean, data: any, status: number}>}
  */
 export const apiPost = async (endpoint, body = null, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
@@ -134,7 +157,11 @@ export const apiPost = async (endpoint, body = null, options = {}) => {
 };
 
 /**
- * PUT 요청
+ * PUT 요청을 보냅니다.
+ * @param {string} endpoint - API 엔드포인트
+ * @param {Object} body - 요청 본문
+ * @param {Object} options - fetch 옵션
+ * @returns {Promise<{success: boolean, data: any, status: number}>}
  */
 export const apiPut = async (endpoint, body = null, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
@@ -155,7 +182,10 @@ export const apiPut = async (endpoint, body = null, options = {}) => {
 };
 
 /**
- * DELETE 요청
+ * DELETE 요청을 보냅니다.
+ * @param {string} endpoint - API 엔드포인트
+ * @param {Object} options - fetch 옵션
+ * @returns {Promise<{success: boolean, data: any, status: number}>}
  */
 export const apiDelete = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
@@ -175,7 +205,10 @@ export const apiDelete = async (endpoint, options = {}) => {
 };
 
 /**
- * 캐시된 GET 요청 (캐시 매니저 사용)
+ * 캐시된 GET 요청을 보냅니다.
+ * @param {string} endpoint - API 엔드포인트
+ * @param {Object} options - fetch 옵션
+ * @returns {Promise<{success: boolean, data: any, fromCache: boolean, status: number}>}
  */
 export const apiGetCached = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
@@ -200,7 +233,10 @@ export const apiGetCached = async (endpoint, options = {}) => {
 };
 
 /**
- * API 오류 처리
+ * API 오류를 처리합니다.
+ * @param {Error} error - 발생한 오류
+ * @param {string} endpoint - 오류가 발생한 엔드포인트
+ * @returns {{success: boolean, error: string, status: number, endpoint: string, timestamp: string}}
  */
 const handleApiError = (error, endpoint) => {
   let message = '알 수 없는 오류가 발생했습니다.';
@@ -229,7 +265,7 @@ const handleApiError = (error, endpoint) => {
 };
 
 /**
- * 일반적인 API 엔드포인트들
+ * 일반적인 API 엔드포인트 목록
  */
 export const apiEndpoints = {
   // 코인 데이터
@@ -266,7 +302,7 @@ export const apiEndpoints = {
 };
 
 /**
- * 특정 API 함수들 (자주 사용되는 것들)
+ * 특정 API 함수 모음
  */
 export const coinApi = {
   getLatest: (useCache = true) => {
@@ -326,7 +362,9 @@ export const healthApi = {
 };
 
 /**
- * WebSocket URL 생성
+ * WebSocket URL을 생성합니다.
+ * @param {string} endpoint - WebSocket 엔드포인트
+ * @returns {string} WebSocket URL
  */
 export const getWebSocketUrl = (endpoint) => {
   const wsBase = API_BASE_URL.replace('http', 'ws');
@@ -334,7 +372,8 @@ export const getWebSocketUrl = (endpoint) => {
 };
 
 /**
- * API 클라이언트 상태 모니터링
+ * API 클라이언트 상태 모니터를 생성합니다.
+ * @returns {{addRequest: Function, getStats: Function, reset: Function}}
  */
 export const createApiMonitor = () => {
   const stats = {

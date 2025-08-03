@@ -263,14 +263,14 @@
   border-radius: var(--border-radius-sm);
 }
 
-/* 간단한 가격 변동 색상 */
-.price-up {
-  color: #22c55e; /* 상승: 초록색 */
+/* 간단한 가격 변동 색상 - PriceCell.css에서 더 구체적으로 정의됨 */
+/* .price-up {
+  color: #ef4444;
 }
 
 .price-down {
-  color: #ef4444; /* 하락: 빨간색 */
-}
+  color: #3b82f6;
+} */
 
 /* 프리미엄 색상 */
 .premium-positive {

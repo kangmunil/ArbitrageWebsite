@@ -1,0 +1,104 @@
+⏺ 가격 변동 애니메이션 디버깅 과정 기록
+
+  1. 문제 발견
+
+  - 증상: 가격이 실시간으로 변동하지만 PriceCell 컴포넌트에서 색상 변화가 없음
+  - 초기 추정: CSS 우선순위 문제로 판단
+
+  2. 첫 번째 시도 - CSS 우선순위 해결
+
+  /* 기존 문제 */
+  .price-cell {
+    color: white !important; /* 이것이 다른 색상을 덮어씀 */
+  }
+
+  /* 수정 */
+  .price-cell {
+    display: inline-block; /* white 색상 제거 */
+  }
+  - 결과: 여전히 색상 변화 없음
+
+  3. 두 번째 시도 - 인라인 스타일 적용
+
+  const getInlineStyle = () => {
+    if (flashStyle === 'price-up') {
+      return { color: '#ef4444', fontWeight: 'bold' };
+    } else if (flashStyle === 'price-down') {
+      return { color: '#3b82f6', fontWeight: 'bold' };
+    }
+    return {};
+  };
+  - 결과: 여전히 색상 변화 없음
+
+  4. 핵심 디버깅 - 콘솔 로그 추가
+
+  // 디버그 로그 추가
+  console.log(`[PriceCell] useEffect 실행: current=${currentPrice}, 
+  prev=${prevPrice}`);
+  console.log(`[PriceCell] 가격 변동 감지! ${prevPrice} → ${currentPrice}, 
+  스타일: ${style}`);
+
+  4.1 첫 번째 발견
+
+  - 로그 결과: useEffect가 실행되지 않음
+  - 원인: prevPriceRef.current가 초기값과 동일해서 변동 감지 안됨
+  - 수정: prevPriceRef.current = null로 초기화
+
+  4.2 두 번째 발견
+
+  - 로그 결과: XRP만 필터링하니 모든 로그에서 prev=null
+  - 핵심 문제: PriceCell이 매번 새로 마운트되고 있음
+
+  5. 근본 원인 분석
+
+  // 문제가 된 key 설정
+  key={`${coin.symbol}-${coin.domestic_price || 0}-${coin.global_price || 0}`}
+
+  문제점:
+  - 가격이 변할 때마다 key가 변경됨
+  - React가 완전히 새로운 컴포넌트로 인식
+  - PriceCell이 매번 새로 마운트되어 prevPriceRef 초기화
+
+  6. 최종 해결책
+
+  6.1 React.memo 적용
+
+  // CoinRow를 React.memo로 감싸기
+  const CoinRow = React.memo(({ coin, index, ... }) => {
+    // 컴포넌트 내용
+  });
+
+  6.2 Key 값 수정
+
+  // 수정 전
+  key={`${coin.symbol}-${coin.domestic_price || 0}-${coin.global_price || 0}`}
+
+  // 수정 후  
+  key={coin.symbol}
+
+  7. 검증 과정
+
+  7.1 로그를 통한 검증
+
+  [PriceCell-XRP] useEffect 실행: current=3.0123, prev=null     // 첫 렌더링
+  [PriceCell-XRP] useEffect 실행: current=3.0125, prev=3.0123  // 두 번째부터
+  이전값 유지!
+  [PriceCell-XRP] 가격 변동 감지! 3.0123 → 3.0125, 스타일: price-up
+
+  7.2 CSS 최적화
+
+  /* 배경색 제거, 글자색만 변경 */
+  .price-cell.price-up {
+    color: #ef4444 !important;
+    font-weight: bold !important;
+    transition: color 0.5s ease !important;
+  }
+
+  8. 교훈
+
+  1. React key의 중요성: key에 변하는 값을 포함하면 안됨
+  2. 컴포넌트 생명주기: 매번 새로 마운트되면 상태가 초기화됨
+  3. 디버깅 단계별 접근: CSS → 인라인 스타일 → 로직 → React 구조
+  4. 로그의 중요성: 콘솔 로그로 실제 동작 확인이 핵심
+
+  최종 결과: 가격 상승(빨간색)/하락(파란색) 500ms 깜빡임 애니메이션 완성

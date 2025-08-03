@@ -269,19 +269,3 @@ Top 13 Crypto Web Design Tips & Best Practices - Digital Silk, 7월 24, 2025에 
 What Are Crypto Communities? - OSL, 7월 24, 2025에 액세스, https://www.osl.com/hk-en/academy/article/what-are-crypto-communities
 
 
-⏺ Update Todos
-  ⎿  ☒ 현재 시스템 상태 확인 - 서비스 실행 상태 체크              
-     ☒ 백엔드 WebSocket 연결 및 데이터 수집 상태 검증
-     ☒ 프론트엔드 데이터 수신 및 상태 업데이트 흐름 확인
-     ☒ PriceCell 컴포넌트를 useState/useEffect 패턴으로 업데이트
-     ☒ PremiumCell 컴포넌트를 useState/useEffect 패턴으로 업데이트
-     ☒ CoinTable.js에서 충돌하는 최적화 기능들 제거
-     ☒ 실시간 가격 애니메이션이 작동하지 않는 문제 해결
-     ☒ 복잡한 애니메이션 제거하고 거래소식 간단한 깜박임 효과로 
-       변경
-     ☒ 기본 색상 통일: 가격(하얀), 김프(+초록/-빨강), 
-       전일대비(+초록/-빨강)
-     ☒ 가격 변화 감지 시 깜박임 효과 구현
-     ☒ 실시간성 향상: 업데이트 주기 0.5초, 10개 코인 70% 변동률, 
-       0.8초 빠른 애니메이션
-     ☒ 실시간 애니메이션 및 UI 업데이트 문제 진단

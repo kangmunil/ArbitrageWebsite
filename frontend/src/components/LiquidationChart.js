@@ -29,6 +29,10 @@ ChartJS.register(
   Legend
 );
 
+/**
+ * 청산 데이터 차트 컴포넌트.
+ * @returns {JSX.Element} LiquidationChart 컴포넌트
+ */
 function LiquidationChart() {
   const [chartData, setChartData] = useState(null); // Chart.js에 사용될 차트 데이터
   const [loading, setLoading] = useState(true); // 데이터 로딩 상태
@@ -98,6 +102,7 @@ function LiquidationChart() {
 
   /**
    * WebSocket 연결을 설정하여 실시간 청산 데이터를 수신합니다.
+   * @returns {Function} cleanup 함수
    */
   const connectWebSocket = () => {
     let ws;
@@ -160,7 +165,8 @@ function LiquidationChart() {
   };
   
   /**
-   * 새로운 청산 데이터 처리 (실시간 스트림 + 타임라인 업데이트)
+   * 새로운 청산 데이터로 차트를 업데이트합니다.
+   * @param {Object} newDataPoint - 새로운 청산 데이터
    */
   const updateChartWithNewData = (newDataPoint) => {
     if (!newDataPoint || !newDataPoint.exchanges) return;
@@ -193,7 +199,8 @@ function LiquidationChart() {
   };
 
   /**
-   * 5분 간격 타임라인 데이터 업데이트
+   * 5분 간격 타임라인 데이터를 업데이트합니다.
+   * @param {Object} newDataPoint - 새로운 청산 데이터
    */
   const updateTimelineData5min = (newDataPoint) => {
     const timestamp = newDataPoint.timestamp || Date.now();
@@ -245,7 +252,8 @@ function LiquidationChart() {
   };
 
   /**
-   * 1시간 간격 타임라인 데이터 업데이트
+   * 1시간 간격 타임라인 데이터를 업데이트합니다.
+   * @param {Object} newDataPoint - 새로운 청산 데이터
    */
   const updateTimelineData1hour = (newDataPoint) => {
     const timestamp = newDataPoint.timestamp || Date.now();
@@ -297,9 +305,6 @@ function LiquidationChart() {
   };
   
   /**
-   * 데모 청산 데이터를 생성합니다.
-   */
-  /**
    * 초기 청산 데이터를 REST API로 빠르게 로드합니다.
    */
   const loadInitialData = async () => {
@@ -331,6 +336,10 @@ function LiquidationChart() {
     }
   };
 
+  /**
+   * 데모 청산 데이터를 생성합니다.
+   * @returns {Array} 데모 데이터 배열
+   */
   const generateDemoData = () => {
     const demoData = [];
     const now = Date.now();
@@ -361,7 +370,7 @@ function LiquidationChart() {
   };
 
   /**
-   * 타임라인 차트 처리 (선택된 시간 프레임에 따라)
+   * 타임라인 차트 데이터를 처리합니다.
    */
   const processTimelineChart = () => {
     const timelineData = selectedTimeFrame === '5min' ? timelineData5min : timelineData1hour;
@@ -443,7 +452,8 @@ function LiquidationChart() {
   };
 
   /**
-   * 거래소 선택 토글 핸들러
+   * 거래소 선택을 토글합니다.
+   * @param {string} exchange - 토글할 거래소
    */
   const handleExchangeToggle = (exchange) => {
     setSelectedExchanges(prev => ({

@@ -41,12 +41,9 @@ class SharedMarketData:
         
         if self.redis_client:
             try:
-                await self.redis_client.hset(
-                    "market:upbit", 
-                    symbol, 
-                    json.dumps(data)
-                )
-                await self.redis_client.expire("market:upbit", 300)  # 5분 TTL
+                # Redis operations
+                await self.redis_client.hset("market:upbit", symbol, json.dumps(data))  # type: ignore
+                await self.redis_client.expire("market:upbit", 300)  # type: ignore  # 5분 TTL
             except Exception as e:
                 logger.warning(f"Redis 업비트 데이터 저장 실패: {e}")
     
@@ -57,12 +54,9 @@ class SharedMarketData:
         
         if self.redis_client:
             try:
-                await self.redis_client.hset(
-                    "market:binance", 
-                    symbol, 
-                    json.dumps(data)
-                )
-                await self.redis_client.expire("market:binance", 300)
+                # Redis operations
+                await self.redis_client.hset("market:binance", symbol, json.dumps(data))  # type: ignore
+                await self.redis_client.expire("market:binance", 300)  # type: ignore
             except Exception as e:
                 logger.warning(f"Redis 바이낸스 데이터 저장 실패: {e}")
     
@@ -73,12 +67,9 @@ class SharedMarketData:
         
         if self.redis_client:
             try:
-                await self.redis_client.hset(
-                    "market:bybit", 
-                    symbol, 
-                    json.dumps(data)
-                )
-                await self.redis_client.expire("market:bybit", 300)
+                # Redis operations
+                await self.redis_client.hset("market:bybit", symbol, json.dumps(data))  # type: ignore
+                await self.redis_client.expire("market:bybit", 300)  # type: ignore
             except Exception as e:
                 logger.warning(f"Redis 바이비트 데이터 저장 실패: {e}")
     
@@ -89,12 +80,9 @@ class SharedMarketData:
         
         if self.redis_client:
             try:
-                await self.redis_client.hset(
-                    "market:bithumb", 
-                    symbol, 
-                    json.dumps(data)
-                )
-                await self.redis_client.expire("market:bithumb", 300)
+                # Redis operations
+                await self.redis_client.hset("market:bithumb", symbol, json.dumps(data))  # type: ignore
+                await self.redis_client.expire("market:bithumb", 300)  # type: ignore
             except Exception as e:
                 logger.warning(f"Redis 빗썸 데이터 저장 실패: {e}")
     
@@ -105,12 +93,9 @@ class SharedMarketData:
         
         if self.redis_client:
             try:
-                await self.redis_client.hset(
-                    "market:rates", 
-                    rate_type, 
-                    str(rate)
-                )
-                await self.redis_client.expire("market:rates", 300)
+                # Redis operations
+                await self.redis_client.hset("market:rates", rate_type, str(rate))  # type: ignore
+                await self.redis_client.expire("market:rates", 300)  # type: ignore
             except Exception as e:
                 logger.warning(f"Redis 환율 데이터 저장 실패: {e}")
     

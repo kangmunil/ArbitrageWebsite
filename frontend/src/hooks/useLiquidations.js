@@ -4,6 +4,11 @@ import { useWebSocket, WS_STATUS } from './useWebSocketManager';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
+/**
+ * 청산 데이터를 관리하는 커스텀 훅.
+ * @param {number} windowMin - 데이터를 가져올 시간(분)
+ * @returns {{summary: Array, trend: Array, loading: boolean, error: string, refetch: Function, lastUpdate: Date}}
+ */
 export const useLiquidations = (windowMin = 5) => {
   const [summary, setSummary] = useState([]);
   const [trend, setTrend] = useState([]);
@@ -21,6 +26,9 @@ export const useLiquidations = (windowMin = 5) => {
     enableLogging: false
   });
 
+  /**
+   * 청산 데이터를 가져옵니다.
+   */
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);

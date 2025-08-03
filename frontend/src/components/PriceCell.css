@@ -1,57 +1,20 @@
 /* 간단한 가격 셀 스타일 - 기본 흰색 */
 .price-cell {
-  color: white !important;
   display: inline-block;
 }
 
-/* 가격 상승 시 - 빨간색 깜빡임 (더 빠르고 부드럽게) */
-.price-up {
+/* 가격 변동 시 글자색만 변경 */
+span.price-cell.price-up,
+.price-cell.price-up {
   color: #ef4444 !important;
-  background-color: rgba(239, 68, 68, 0.4) !important;
-  animation: flash-red 0.8s ease-out;
-  font-weight: bold;
-  padding: 2px 4px;
-  border-radius: 3px;
+  font-weight: bold !important;
+  transition: color 0.3s ease !important;
 }
 
-/* 가격 하락 시 - 파란색 깜빡임 (더 빠르고 부드럽게) */
-.price-down {
+span.price-cell.price-down,
+.price-cell.price-down {
   color: #3b82f6 !important;
-  background-color: rgba(59, 130, 246, 0.4) !important;
-  animation: flash-blue 0.8s ease-out;
-  font-weight: bold;
-  padding: 2px 4px;
-  border-radius: 3px;
+  font-weight: bold !important;
+  transition: color 0.3s ease !important;
 }
 
-/* 빨간색 깜빡임 애니메이션 - 더 강하게 */
-@keyframes flash-red {
-  0% { 
-    background-color: rgba(239, 68, 68, 0.4);
-    color: #ef4444;
-  }
-  50% { 
-    background-color: rgba(239, 68, 68, 0.8);
-    color: white;
-  }
-  100% { 
-    background-color: rgba(239, 68, 68, 0.4);
-    color: #ef4444;
-  }
-}
-
-/* 파란색 깜빡임 애니메이션 - 더 강하게 */
-@keyframes flash-blue {
-  0% { 
-    background-color: rgba(59, 130, 246, 0.4);
-    color: #3b82f6;
-  }
-  50% { 
-    background-color: rgba(59, 130, 246, 0.8);
-    color: white;
-  }
-  100% { 
-    background-color: rgba(59, 130, 246, 0.4);
-    color: #3b82f6;
-  }
-}

@@ -1,14 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+/**
+ * 여러 WebSocket 엔드포인트에 대한 연결을 관리하는 커스텀 훅입니다.
+ * @param {Array<string>} endpoints - 연결할 WebSocket 엔드포인트 목록
+ * @returns {{data: Object, status: Object}} 각 엔드포인트의 데이터 및 연결 상태
+ */
 const useWebSocket = (endpoints) => {
   const [data, setData] = useState({});
   const [status, setStatus] = useState({});
   const socketsRef = useRef({});
 
+  /**
+   * 지정된 엔드포인트에 WebSocket 연결을 설정합니다.
+   * @param {string} endpoint - 연결할 WebSocket 엔드포인트
+   */
   const connect = useCallback((endpoint) => {
-    console.log(`[WebSocket] Connecting to ${endpoint}...`);
     if (socketsRef.current[endpoint] && (socketsRef.current[endpoint].readyState === WebSocket.OPEN || socketsRef.current[endpoint].readyState === WebSocket.CONNECTING)) {
-      console.log(`[WebSocket] Already open or connecting to ${endpoint}. Skipping.`);
       return;
     }
 
@@ -16,7 +23,6 @@ const useWebSocket = (endpoints) => {
     socketsRef.current[endpoint] = socket;
 
     socket.onopen = () => {
-      console.log(`[WebSocket] Connected to ${endpoint}`);
       setStatus(prev => ({ ...prev, [endpoint]: 'connected' }));
     };
 
@@ -25,17 +31,16 @@ const useWebSocket = (endpoints) => {
         const message = JSON.parse(event.data);
         setData(prev => ({ ...prev, [endpoint]: message }));
       } catch (error) {
-        console.error(`[WebSocket] Error parsing message from ${endpoint}:`, error);
+        console.error(`WebSocket parse error:`, error);
       }
     };
 
     socket.onerror = (error) => {
-      console.error(`[WebSocket] Error on ${endpoint}:`, error, `(readyState: ${socket.readyState})`);
+      console.error(`WebSocket error on ${endpoint}:`, error);
       setStatus(prev => ({ ...prev, [endpoint]: 'error' }));
     };
 
-    socket.onclose = (event) => {
-      console.log(`[WebSocket] Disconnected from ${endpoint}. Code: ${event.code}, Reason: ${event.reason}, Clean: ${event.wasClean}`);
+    socket.onclose = () => {
       setStatus(prev => ({ ...prev, [endpoint]: 'disconnected' }));
     };
   }, []);

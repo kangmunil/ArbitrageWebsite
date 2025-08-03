@@ -57,7 +57,11 @@ health_checker = None
 
 @app.on_event("startup")
 async def startup_event():
-    """서비스 시작 시 초기화"""
+    """
+    서비스 시작 시 초기화 작업을 수행합니다.
+
+    Redis 매니저, 헬스체커를 초기화하고 시장 데이터 수집을 시작합니다.
+    """
     global redis_manager, health_checker
     
     logger.info("🚀 Market Data Service 시작")
@@ -81,7 +85,11 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """서비스 종료 시 정리"""
+    """
+    서비스 종료 시 정리 작업을 수행합니다.
+
+    데이터 수집을 중지하고 Redis 연결을 종료합니다.
+    """
     logger.info("🛑 Market Data Service 종료")
     await market_collector.stop_collection()
     if redis_manager:
@@ -90,7 +98,12 @@ async def shutdown_event():
 # === Health Check ===
 @app.get("/health")
 async def health_check():
-    """서비스 상태 확인"""
+    """
+    서비스의 상태를 확인합니다.
+
+    Returns:
+        dict: 서비스의 헬스 체크 결과.
+    """
     global health_checker
     
     if health_checker:
@@ -112,7 +125,12 @@ async def health_check():
 # === Market Data APIs ===
 @app.get("/api/market/prices")
 async def get_market_prices():
-    """모든 코인의 가격 데이터 반환"""
+    """
+    모든 코인의 가격 데이터를 반환합니다.
+
+    Returns:
+        dict: 가격 데이터 목록.
+    """
     try:
         prices_data = await shared_data.get_all_prices()
         return {
@@ -127,7 +145,12 @@ async def get_market_prices():
 
 @app.get("/api/market/volumes")
 async def get_market_volumes():
-    """모든 코인의 거래량 데이터 반환"""
+    """
+    모든 코인의 거래량 데이터를 반환합니다.
+
+    Returns:
+        dict: 거래량 데이터 목록.
+    """
     try:
         volumes_data = await shared_data.get_all_volumes()
         return {
@@ -142,7 +165,12 @@ async def get_market_volumes():
 
 @app.get("/api/market/premiums")
 async def get_market_premiums():
-    """김치 프리미엄 데이터 반환"""
+    """
+    김치 프리미엄 데이터를 반환합니다.
+
+    Returns:
+        dict: 프리미엄 데이터 목록.
+    """
     try:
         premiums_data = await shared_data.get_all_premiums()
         return {
@@ -157,7 +185,12 @@ async def get_market_premiums():
 
 @app.get("/api/market/exchange-rate")
 async def get_exchange_rate():
-    """환율 정보 반환"""
+    """
+    환율 정보를 반환합니다.
+
+    Returns:
+        dict: 환율 데이터.
+    """
     try:
         exchange_data = await shared_data.get_exchange_rates()
         return {
@@ -171,7 +204,12 @@ async def get_exchange_rate():
 
 @app.get("/api/market/combined")
 async def get_combined_market_data():
-    """통합된 시장 데이터 반환 (API Gateway에서 사용)"""
+    """
+    통합된 시장 데이터를 반환합니다. (API Gateway에서 사용)
+
+    Returns:
+        dict: 통합된 시장 데이터 목록.
+    """
     try:
         combined_data = await shared_data.get_combined_data()
         return {
@@ -187,19 +225,29 @@ async def get_combined_market_data():
 # === WebSocket Endpoint ===
 @app.websocket("/ws/market")
 async def websocket_market_endpoint(websocket: WebSocket):
-    """실시간 시장 데이터 WebSocket"""
+    """
+    실시간 시장 데이터를 위한 WebSocket 엔드포인트입니다.
+
+    Args:
+        websocket (WebSocket): 클라이언트 WebSocket 연결.
+    """
     
     async def get_initial_data():
         """초기 시장 데이터 제공자"""
         return await shared_data.get_combined_data()
     
     endpoint = WebSocketEndpoint(ws_manager, get_initial_data)
-    await endpoint.handle_connection(websocket, send_initial=True, streaming_interval=1.0)
+    await endpoint.handle_connection(websocket, send_initial=True, streaming_interval=0.2)
 
 # === Debug Endpoints ===
 @app.get("/api/debug/collectors")
 async def debug_collectors():
-    """데이터 수집기 상태 디버그"""
+    """
+    데이터 수집기의 상태를 디버깅합니다.
+
+    Returns:
+        dict: 수집기 및 공유 데이터의 통계 정보.
+    """
     return {
         "collectors": market_collector.get_all_stats(),
         "shared_data_stats": await shared_data.get_stats(),
@@ -208,7 +256,15 @@ async def debug_collectors():
 
 @app.get("/api/debug/raw-data/{exchange}")
 async def debug_raw_data(exchange: str):
-    """특정 거래소의 원시 데이터 확인"""
+    """
+    특정 거래소의 원시 데이터를 확인합니다.
+
+    Args:
+        exchange (str): 거래소 이름.
+
+    Returns:
+        dict: 해당 거래소의 원시 데이터.
+    """
     try:
         raw_data = await shared_data.get_exchange_raw_data(exchange)
         return {

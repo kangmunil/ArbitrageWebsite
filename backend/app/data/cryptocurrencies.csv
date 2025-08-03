@@ -1,0 +1,9 @@
+crypto_id,symbol,name_ko,name_en,logo_url,market_cap_rank,circulating_supply,max_supply,category,website_url,whitepaper_url,is_active
+bitcoin,BTC,비트코인,Bitcoin,https://assets.coingecko.com/coins/images/1/large/bitcoin.png,1,19500000,21000000,Cryptocurrency,https://bitcoin.org,https://bitcoin.org/bitcoin.pdf,TRUE
+ethereum,ETH,이더리움,Ethereum,https://assets.coingecko.com/coins/images/279/large/ethereum.png,2,120000000,,Smart Contract Platform,https://ethereum.org,https://ethereum.org/en/whitepaper/,TRUE
+ripple,XRP,리플,XRP,https://assets.coingecko.com/coins/images/44/large/xrp-symbol-white-128.png,6,51000000000,100000000000,Payments,https://ripple.com,,TRUE
+solana,SOL,솔라나,Solana,https://assets.coingecko.com/coins/images/4128/large/solana.png,5,400000000,,Smart Contract Platform,https://solana.com,https://solana.com/solana-whitepaper.pdf,TRUE
+dogecoin,DOGE,도지코인,Dogecoin,https://assets.coingecko.com/coins/images/5/large/dogecoin.png,8,140000000000,,Meme,https://dogecoin.com,,TRUE
+cardano,ADA,에이다,Cardano,https://assets.coingecko.com/coins/images/975/large/cardano.png,9,34000000000,45000000000,Smart Contract Platform,https://cardano.org,https://www.cardano.org/en/academic-papers/,TRUE
+polygon,MATIC,폴리곤,Polygon,https://assets.coingecko.com/coins/images/4713/large/matic-token-icon.png,15,9000000000,10000000000,Layer 2,https://polygon.technology,https://polygon.technology/papers/pol-whitepaper,TRUE
+chainlink,LINK,체인링크,Chainlink,https://assets.coingecko.com/coins/images/877/large/chainlink-new-logo.png,16,500000000,1000000000,Oracle,https://chain.link,https://chain.link/whitepaper,TRUE

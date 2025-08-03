@@ -5,7 +5,7 @@
 """
 
 from fastapi import FastAPI
-from typing import Dict, List
+from typing import Dict, List, Optional
 import asyncio
 import logging
 from liquidation_stats_collector import (
@@ -96,7 +96,7 @@ async def debug_liquidation_data():
     return debug_info
 
 @app.get("/api/liquidations/raw")
-async def get_raw_liquidations(exchange: str = None, limit: int = 60):
+async def get_raw_liquidations(exchange: Optional[str] = None, limit: int = 60):
     """원시 청산 데이터를 반환합니다.
     
     Args:

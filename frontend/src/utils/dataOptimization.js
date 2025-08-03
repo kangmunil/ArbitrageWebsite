@@ -21,14 +21,14 @@ class LRUCache {
     this.cache = new Map();
   }
   
+  /**
+   * 캐시에서 지정된 키에 해당하는 값을 가져옵니다.
+   * 항목이 존재하면 가장 최근에 사용된 것으로 표시하고 맨 뒤로 이동시킵니다.
+   *
+   * @param {*} key - 가져올 항목의 키.
+   * @returns {*} 키에 해당하는 값 또는 null (항목이 없는 경우).
+   */
   get(key) {
-    /**
-     * 캐시에서 지정된 키에 해당하는 값을 가져옵니다.
-     * 항목이 존재하면 가장 최근에 사용된 것으로 표시하고 맨 뒤로 이동시킵니다.
-     *
-     * @param {*} key - 가져올 항목의 키.
-     * @returns {*} 키에 해당하는 값 또는 null (항목이 없는 경우).
-     */
     if (this.cache.has(key)) {
       // 최근 사용된 항목을 맨 뒤로 이동
       const value = this.cache.get(key);
@@ -39,15 +39,15 @@ class LRUCache {
     return null;
   }
   
+  /**
+   * 캐시에 키-값 쌍을 설정합니다.
+   * 이미 존재하는 키인 경우 업데이트하고, 캐시가 최대 크기에 도달하면
+   * 가장 오랫동안 사용되지 않은 항목을 제거합니다.
+   *
+   * @param {*} key - 설정할 항목의 키.
+   * @param {*} value - 설정할 항목의 값.
+   */
   set(key, value) {
-    /**
-     * 캐시에 키-값 쌍을 설정합니다.
-     * 이미 존재하는 키인 경우 업데이트하고, 캐시가 최대 크기에 도달하면
-     * 가장 오랫동안 사용되지 않은 항목을 제거합니다.
-     *
-     * @param {*} key - 설정할 항목의 키.
-     * @param {*} value - 설정할 항목의 값.
-     */
     if (this.cache.has(key)) {
       this.cache.delete(key);
     } else if (this.cache.size >= this.maxSize) {
@@ -58,10 +58,10 @@ class LRUCache {
     this.cache.set(key, value);
   }
   
+  /**
+   * 캐시의 모든 항목을 지웁니다.
+   */
   clear() {
-    /**
-     * 캐시의 모든 항목을 지웁니다.
-     */
     this.cache.clear();
   }
 }
@@ -72,18 +72,15 @@ const sortCache = new LRUCache(50);
 const searchIndexCache = new LRUCache(10);
 
 /**
- * 검색 인덱스 생성 (한글명과 심볼명 모두 포함)
+ * 주어진 코인 데이터에 대한 검색 인덱스를 생성합니다.
+ * 심볼, 한글명, 그리고 부분 문자열을 포함하여 효율적인 검색을 가능하게 합니다.
+ * 캐싱을 통해 반복적인 인덱스 생성을 최적화합니다.
+ *
+ * @param {Array<Object>} data - 검색 인덱스를 생성할 코인 데이터 배열.
+ * @param {Function} getCoinName - 코인 심볼에 해당하는 한글명을 반환하는 함수.
+ * @returns {Map<string, number[]>} 검색어(키)와 해당 코인 데이터의 인덱스 배열(값)을 매핑하는 Map 객체.
  */
 export const createSearchIndex = (data, getCoinName) => {
-  /**
-   * 주어진 코인 데이터에 대한 검색 인덱스를 생성합니다.
-   * 심볼, 한글명, 그리고 부분 문자열을 포함하여 효율적인 검색을 가능하게 합니다.
-   * 캐싱을 통해 반복적인 인덱스 생성을 최적화합니다.
-   *
-   * @param {Array<Object>} data - 검색 인덱스를 생성할 코인 데이터 배열.
-   * @param {Function} getCoinName - 코인 심볼에 해당하는 한글명을 반환하는 함수.
-   * @returns {Map<string, number[]>} 검색어(키)와 해당 코인 데이터의 인덱스 배열(값)을 매핑하는 Map 객체.
-   */
   const cacheKey = `search_${data.length}_${Date.now()}`;
   
   // 캐시에서 확인
@@ -135,19 +132,16 @@ export const createSearchIndex = (data, getCoinName) => {
 };
 
 /**
- * 최적화된 검색 필터링
+ * 검색어에 따라 코인 데이터를 최적화하여 필터링합니다.
+ * 짧은 검색어는 간단한 필터링을, 긴 검색어는 `createSearchIndex`를 활용한 인덱스 기반 검색을 수행합니다.
+ * 캐싱을 통해 필터링 성능을 향상시킵니다.
+ *
+ * @param {Array<Object>} data - 필터링할 코인 데이터 배열.
+ * @param {string} searchTerm - 사용자가 입력한 검색어.
+ * @param {Function} getCoinName - 코인 심볼에 해당하는 한글명을 반환하는 함수.
+ * @returns {Array<Object>} 필터링된 코인 데이터 배열.
  */
 export const optimizedFilter = (data, searchTerm, getCoinName) => {
-  /**
-   * 검색어에 따라 코인 데이터를 최적화하여 필터링합니다.
-   * 짧은 검색어는 간단한 필터링을, 긴 검색어는 `createSearchIndex`를 활용한 인덱스 기반 검색을 수행합니다.
-   * 캐싱을 통해 필터링 성능을 향상시킵니다.
-   *
-   * @param {Array<Object>} data - 필터링할 코인 데이터 배열.
-   * @param {string} searchTerm - 사용자가 입력한 검색어.
-   * @param {Function} getCoinName - 코인 심볼에 해당하는 한글명을 반환하는 함수.
-   * @returns {Array<Object>} 필터링된 코인 데이터 배열.
-   */
   if (!searchTerm || searchTerm.length === 0) {
     return data;
   }
@@ -197,19 +191,16 @@ export const optimizedFilter = (data, searchTerm, getCoinName) => {
 };
 
 /**
- * 최적화된 정렬 (Quick Sort 변형)
+ * 코인 데이터를 지정된 열과 방향에 따라 최적화하여 정렬합니다.
+ * 작은 배열에는 기본 정렬을 사용하고, 큰 배열에는 Quick Sort 변형을 사용합니다.
+ * 캐싱을 통해 정렬 성능을 향상시킵니다.
+ *
+ * @param {Array<Object>} data - 정렬할 코인 데이터 배열.
+ * @param {string} sortColumn - 정렬 기준으로 사용할 열의 이름.
+ * @param {'asc' | 'desc'} sortDirection - 정렬 방향 ('asc' 또는 'desc').
+ * @returns {Array<Object>} 정렬된 코인 데이터 배열.
  */
 export const optimizedSort = (data, sortColumn, sortDirection) => {
-  /**
-   * 코인 데이터를 지정된 열과 방향에 따라 최적화하여 정렬합니다.
-   * 작은 배열에는 기본 정렬을 사용하고, 큰 배열에는 Quick Sort 변형을 사용합니다.
-   * 캐싱을 통해 정렬 성능을 향상시킵니다.
-   *
-   * @param {Array<Object>} data - 정렬할 코인 데이터 배열.
-   * @param {string} sortColumn - 정렬 기준으로 사용할 열의 이름.
-   * @param {'asc' | 'desc'} sortDirection - 정렬 방향 ('asc' 또는 'desc').
-   * @returns {Array<Object>} 정렬된 코인 데이터 배열.
-   */
   if (!sortColumn || data.length <= 1) {
     return data;
   }
@@ -286,17 +277,14 @@ export const optimizedSort = (data, sortColumn, sortDirection) => {
 };
 
 /**
- * 가상화를 위한 데이터 청크 분할
+ * 가상 스크롤링을 위해 데이터를 청크(덩어리)로 분할합니다.
+ * 큰 데이터 세트를 작은 부분으로 나누어 성능을 최적화합니다.
+ *
+ * @param {Array<Object>} data - 청크로 분할할 데이터 배열.
+ * @param {number} [chunkSize=20] - 각 청크의 최대 크기. 기본값은 20입니다.
+ * @returns {Array<Object>} 각 청크의 시작/끝 인덱스와 데이터를 포함하는 배열.
  */
 export const createVirtualizedChunks = (data, chunkSize = 20) => {
-  /**
-   * 가상 스크롤링을 위해 데이터를 청크(덩어리)로 분할합니다.
-   * 큰 데이터 세트를 작은 부분으로 나누어 성능을 최적화합니다.
-   *
-   * @param {Array<Object>} data - 청크로 분할할 데이터 배열.
-   * @param {number} [chunkSize=20] - 각 청크의 최대 크기. 기본값은 20입니다.
-   * @returns {Array<Object>} 각 청크의 시작/끝 인덱스와 데이터를 포함하는 배열.
-   */
   const chunks = [];
   for (let i = 0; i < data.length; i += chunkSize) {
     chunks.push({
@@ -309,82 +297,19 @@ export const createVirtualizedChunks = (data, chunkSize = 20) => {
 };
 
 /**
- * 디바운스된 검색 핸들러
+ * 디바운스된 함수를 생성하여, 특정 시간(delay) 내에 여러 번 호출되어도
+ * 마지막 호출만 실행되도록 합니다.
+ *
+ * @param {Function} callback - 디바운스할 함수.
+ * @param {number} [delay=300] - 디바운스 지연 시간(ms). 기본값은 300ms입니다.
+ * @returns {Function} 디바운스된 함수.
  */
 export const createDebouncedSearch = (callback, delay = 300) => {
-  /**
-   * 디바운스된 함수를 생성하여, 특정 시간(delay) 내에 여러 번 호출되어도
-   * 마지막 호출만 실행되도록 합니다. 검색 입력과 같이 빈번한 이벤트 처리에 유용합니다.
-   *
-   * @param {Function} callback - 디바운스될 실제 함수.
-   * @param {number} [delay=300] - 함수 실행을 지연시킬 시간(밀리초). 기본값은 300ms입니다.
-   * @returns {Function} 디바운스된 함수.
-   */
   let timeoutId;
-  
-  return function debouncedSearch(...args) {
+  return (...args) => {
     clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => callback.apply(this, args), delay);
-  };
-};
-
-/**
- * 메모리 사용량 모니터링
- */
-export const getMemoryUsage = () => {
-  /**
-   * 현재 JavaScript 힙 메모리 사용량을 조회합니다.
-   * `performance.memory` API를 사용하여 사용된, 총, 제한된 힙 크기를 MB 단위로 반환합니다.
-   *
-   * @returns {Object | null} 메모리 사용량 정보를 담은 객체 (used, total, limit) 또는 API를 사용할 수 없는 경우 null.
-   */
-  if (performance && performance.memory) {
-    return {
-      used: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),
-      total: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024),
-      limit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024)
-    };
-  }
-  return null;
-};
-
-/**
- * 캐시 정리
- */
-export const clearAllCaches = () => {
-  /**
-   * 모든 데이터 최적화 캐시(필터, 정렬, 검색 인덱스 캐시)를 지웁니다.
-   *
-   * @returns {void}
-   */
-  filterCache.clear();
-  sortCache.clear();
-  searchIndexCache.clear();
-  console.log('All data optimization caches cleared');
-};
-
-/**
- * 캐시 통계
- */
-export const getCacheStats = () => {
-  /**
-   * 현재 캐시들의 통계 정보를 반환합니다.
-   * 각 캐시의 현재 크기와 최대 크기를 포함합니다.
-   *
-   * @returns {Object} 각 캐시의 통계 정보를 담은 객체.
-   */
-  return {
-    filterCache: {
-      size: filterCache.cache.size,
-      maxSize: filterCache.maxSize
-    },
-    sortCache: {
-      size: sortCache.cache.size,
-      maxSize: sortCache.maxSize
-    },
-    searchIndexCache: {
-      size: searchIndexCache.cache.size,
-      maxSize: searchIndexCache.maxSize
-    }
+    timeoutId = setTimeout(() => {
+      callback(...args);
+    }, delay);
   };
 };
