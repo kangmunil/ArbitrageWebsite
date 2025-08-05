@@ -1,0 +1,11 @@
+# Market Data Service 의존성 (통합 버전)
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+aiohttp==3.9.1
+requests==2.31.0
+websockets==11.0.3
+redis==5.0.1
+python-json-logger==2.0.7
+pydantic==2.5.0
+beautifulsoup4==4.12.2
+lxml==4.9.3

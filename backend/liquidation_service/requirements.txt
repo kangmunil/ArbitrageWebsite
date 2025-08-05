@@ -1,4 +1,19 @@
+# Market Sentiment & Liquidation Service 의존성 (v2.0)
 fastapi==0.104.1
-uvicorn==0.24.0
-aiohttp==3.9.0
+uvicorn[standard]==0.24.0
+aiohttp==3.9.1
+requests==2.31.0
+websockets==11.0.3
+redis==5.0.1
+python-json-logger==2.0.7
 pydantic==2.5.0
+
+# 환경변수 관리
+python-dotenv==1.0.0
+
+# 비동기 작업 스케줄링
+schedule==1.2.0
+
+# 데이터 분석 및 처리 (추후 추가 예정)
+# pandas>=2.2.0
+# numpy>=1.26.0

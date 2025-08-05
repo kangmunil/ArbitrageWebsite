@@ -1,15 +1,20 @@
+/* 간단한 가격 셀 스타일 - 기본 흰색 */
 .price-cell {
-  transition: background-color 0.2s ease-out;
-  padding: 2px 4px;
-  border-radius: 4px;
+  display: inline-block;
 }
 
-/* 가격 상승 시 (빨간색 배경) */
-.flash-up {
-  background-color: rgba(239, 68, 68, 0.4); /* Tailwind red-500 with opacity */
+/* 가격 변동 시 글자색만 변경 */
+span.price-cell.price-up,
+.price-cell.price-up {
+  color: #ef4444 !important;
+  font-weight: bold !important;
+  transition: color 0.3s ease !important;
 }
 
-/* 가격 하락 시 (파란색 배경) */
-.flash-down {
-  background-color: rgba(59, 130, 246, 0.4); /* Tailwind blue-500 with opacity */
+span.price-cell.price-down,
+.price-cell.price-down {
+  color: #3b82f6 !important;
+  font-weight: bold !important;
+  transition: color 0.3s ease !important;
 }
+

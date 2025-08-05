@@ -1,0 +1,21 @@
+[{
+	"resource": "/d:/project/ArbitrageWebsite/backend/app/main.py",
+	"owner": "pylance",
+	"code": {
+		"value": "reportGeneralTypeIssues",
+		"target": {
+			"$mid": 1,
+			"path": "/microsoft/pylance-release/blob/main/docs/diagnostics/reportGeneralTypeIssues.md",
+			"scheme": "https",
+			"authority": "github.com"
+		}
+	},
+	"severity": 8,
+	"message": "Invalid conditional operand of type \"Column[str] | Literal[False]\"\n  Method __bool__ for type \"Column[str]\" returns type \"NoReturn\" rather than \"bool\"",
+	"source": "Pylance",
+	"startLineNumber": 174,
+	"startColumn": 16,
+	"endLineNumber": 174,
+	"endColumn": 57,
+	"origin": "extHost3"
+}]

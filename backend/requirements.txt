@@ -1,12 +1,13 @@
-fastapi
-uvicorn[standard]
-sqlalchemy
-PyMySQL
-cryptography
-requests
-websockets
-beautifulsoup4
+# API Gateway Service 의존성
+-r requirements-common.txt
+
+# API Gateway 전용 패키지
+sqlalchemy==2.0.23
+PyMySQL==1.1.0
+cryptography==41.0.7
+beautifulsoup4==4.12.2
 lxml
-aiohttp
-numpy
-psutil
+numpy==1.26.4
+psutil==5.9.6
+apscheduler==3.10.4
+ccxt>=4.2.0

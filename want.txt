@@ -1,0 +1,370 @@
+웹소켓으로 받은데이터가 3초만에 휘발되는걸 해결할수없다면
+db로 데이터를 저장해 날짜가 넘어가면 그 시점으로 
+날짜와 가격 스냅샷
+그리고 다음날부터 24시간동안 저장되는 데이터와 저장된 데이터를 대조해 다르면 업데이트 이를 반복하는 로직을 짠다
+
+다음 작업은 db에 저장된 한글 코인이름과 업비트 심볼로 출력되는 글자를 한글 코인이름으로 수정
+
+아이콘도 db에 저장된 url을 아이콘 삽입하는 작업 
+
+
+  3. 안정성 및 장애 복구 능력 강화
+
+   - 현재 상태: 서비스 간 통신에 기본적인 try-except 블록이 있지만, 일시적인
+     네트워크 문제나 서비스 장애에 대한 복구 전략이 부족할 수 있습니다.
+   - 개선 제안: 더욱 견고한 서비스 간 통신 로직을 추가합니다.
+       - 방법:
+           - 재시도 메커니즘: 서비스 간 HTTP 요청 실패 시, Exponential Backoff과
+             같은 전략을 사용하여 몇 차례 재시도하는 로직을 추가합니다. (예:
+             tenacity 라이브러리 사용)
+           - 서킷 브레이커 패턴: 특정 서비스에 대한 요청이 계속 실패하면,
+             일시적으로 해당 서비스로의 요청을 차단하여 전체 시스템의 부하를
+             줄이고 장애 전파를 막습니다.
+       - 기대 효과: 일부 서비스의 일시적인 장애가 전체 시스템의 안정성에 미치는
+         영향을 최소화할 수 있습니다.
+1단계: 의존성 추가
+
+   1. api-gateway의 requirements.txt 파일에 필요한 라이브러리를 추가합니다. 이
+      파일은 backend/requirements.txt일 것입니다.
+       * tenacity (지수 백오프를 사용한 재시도 라이브러리)
+       * pybreaker (서킷 브레이커 패턴 구현 라이브러리)
+
+  2단계: 서비스 통신 로직 리팩토링 (`MarketDataAggregator`)
+
+  api-gateway에서 외부 서비스 통신을 담당하는
+  backend/services/premium_service.py의 MarketDataAggregator 클래스를
+  집중적으로 수정합니다.
+
+   1. 서킷 브레이커 초기화:
+       * MarketDataAggregator 클래스의 __init__ 메서드에서 각 외부 서비스에 대한
+         서킷 브레이커를 생성합니다.
+
+   1         from pybreaker import CircuitBreaker
+   2 
+   3         # 예시: market-data-service용 서킷 브레이커
+   4         self.market_service_breaker = CircuitBreaker(fail_max=5,
+     reset_timeout=60)
+   5         # 5번 연속 실패 시 60초 동안 회로를 열어 요청을 차단
+
+   2. 재시도 및 서킷 브레이커 적용:
+       * get_combined_market_data와 같이 외부 서비스와 통신하는 모든 메서드에
+         데코레이터(@)를 사용하여 재시도 로직을 추가하고, try...except 구문으로
+         서킷 브레이커를 적용합니다.
+
+       * 기존 코드 (예시):
+
+   1         # premium_service.py
+   2         async with session.get(f"{self.market_service_url}
+     /api/market/combined") as response:
+   3             if response.status == 200:
+   4                 return await response.json()
+
+       * 개선된 코드 (예시):
+
+    1         # premium_service.py
+    2         from tenacity import retry, stop_after_attempt,
+      wait_exponential
+    3         from pybreaker import CircuitBreakerError
+    4 
+    5         @retry(
+    6             wait=wait_exponential(multiplier=1, min=2, max=10), # 
+      2초, 4초, 8초, 10초 간격으로 재시도
+    7             stop=stop_after_attempt(4) # 총 4번 시도
+    8         )
+    9         @self.market_service_breaker # 서킷 브레이커 적용
+   10         async def get_combined_market_data(self):
+   11             try:
+   12                 async with aiohttp.ClientSession() as session:
+   13                     async with session.get(f"
+      {self.market_service_url}/api/market/combined") as response:
+   14                         response.raise_for_status() # 200 OK가 
+      아니면 예외 발생
+   15                         return await response.json()
+   16             except CircuitBreakerError:
+   17                 logger.error("Market-service 서킷 브레이커 열림. 
+      요청을 차단합니다.")
+   18                 return None # 또는 캐시된 데이터 반환
+   19             except Exception as e:
+   20                 logger.error(f"Market-service 통신 실패: {e}")
+   21                 raise # tenacity가 재시도하도록 예외를 다시 
+      발생시킴
+
+  3단계: 우아한 실패 처리 (Graceful Degradation)
+
+  재시도에도 불구하고 통신이 최종 실패하거나 서킷 브레이커가 열렸을 때,
+  api-gateway가 완전히 멈추는 대신 부분적으로라도 동작하도록 만듭니다.
+
+   1. API 엔드포인트 수정:
+       * backend/app/main.py의 /api/coins/latest와 같은 엔드포인트에서,
+         aggregator의 메서드 호출 결과를 확인합니다.
+       * 결과가 None이거나 비어있다면, 500 에러를 반환하는 대신 클라이언트가 
+         이해할 수 있는 빈 데이터나 캐시된 데이터를 반환합니다.
+
+   1         # main.py
+   2         @app.get("/api/coins/latest")
+   3         async def get_latest_coin_data():
+   4             combined_data = await
+     aggregator.get_combined_market_data()
+   5             if combined_data is None:
+   6                 # 서비스가 일시적으로 불가능함을 알림 (503 Service 
+     Unavailable)
+   7                 # 또는 빈 데이터를 보내 프론트엔드가 깨지지 않게 함
+   8                 return {"count": 0, "data": [], "error": "Market 
+     data is temporarily unavailable."}
+   9             return {"count": len(combined_data), "data":
+     combined_data}
+
+  4단계: 헬스 체크 강화
+
+  api-gateway의 /health 엔드포인트가 서킷 브레이커의 현재 상태를 포함하도록
+  하여, 시스템의 문제를 쉽게 진단할 수 있게 합니다.
+
+   1. 헬스 체크 로직 수정:
+       * backend/shared/health_checker.py의 create_api_gateway_health_checker
+         함수를 수정합니다.
+       * 외부 서비스 연결을 확인하는 헬스 체크 함수에 서킷 브레이커의
+         상태(state)를 포함시킵니다.
+
+   1         # health_checker.py
+   2         async def check_market_service():
+   3             # ... 기존 로직 ...
+   4             result = await
+     CommonHealthChecks.check_external_service(...)
+   5             result['circuit_breaker_state'] =
+     aggregator.market_service_breaker.current_state
+   6             return result
+
+  기대 효과
+
+   * 회복탄력성(Resilience): market-data-service가 재시작하는 등 몇 초간의
+     일시적인 장애는 tenacity가 자동으로 처리하여 사용자는 문제를 인지하지
+     못합니다.
+   * 장애 격리(Fault Isolation): liquidation-service에 문제가 발생하여 서킷
+     브레이커가 열리면, 더 이상 해당 서비스로 요청을 보내지 않아 api-gateway의
+     리소스를 보호하고 장애가 전파되는 것을 막습니다.
+   * 향상된 사용자 경험: 특정 서비스가 다운되더라도, api-gateway는 죽지 않고
+     다른 기능은 정상적으로 제공하거나, 최소한 프론트엔드가 깨지지 않도록
+     안정적인 응답을 보냅니다.
+   * 운영 편의성: /health 엔드포인트만 확인해도 어떤 서비스에 문제가 있는지,
+     서킷 브레이커가 열렸는지 즉시 파악할 수 있습니다.
+
+
+
+  4. 테스트 커버리지 및 코드 품질
+
+   - 현재 상태: 프로젝트에 자동화된 테스트 코드가 부족해 보입니다. 이는 새로운
+     기능 추가나 리팩토링 시 버그 발생 가능성을 높입니다.
+   - 개선 제안: `pytest`를 사용한 단위 테스트 및 통합 테스트를 도입합니다.
+       - 방법:
+           - 단위 테스트: 데이터 처리 로직(프리미엄 계산, 데이터 정규화 등)과
+             같은 핵심 비즈니스 로직에 대한 테스트를 작성합니다.
+           - 통합 테스트: 각 서비스의 API 엔드포인트가 예상대로 동작하는지
+             확인하는 테스트를 작성합니다.
+       - 기대 효과: 코드 변경에 대한 자신감을 높이고, 잠재적인 버그를 사전에
+         발견하여 소프트웨어의 품질과 안정성을 크게 향상시킬 수 있습니다.
+         
+ 현재 프로젝트에는 자동화된 테스트가 부족하여, 코드 변경 시 잠재적인 버그를
+  놓칠 위험이 있습니다. 또한, 코드 스타일이 개발자마다 달라지면 가독성과
+  유지보수성이 저하될 수 있습니다.
+
+  이 문제를 해결하기 위해 pytest를 사용한 테스트 프레임워크를 도입하고, ruff를
+  이용해 코드 포맷팅과 린팅을 자동화하는 시스템을 구축하겠습니다.
+
+  목표: 버그를 사전에 방지하고, 코드의 일관성과 안정성을 높여 지속 가능한 개발 
+  환경 구축
+
+  ---
+
+  구현 계획 (단계별)
+
+  1단계: 테스트 및 코드 품질 도구 설정
+
+   1. 의존성 추가: 프로젝트의 backend/requirements.txt에 테스트와 코드 품질
+      관리에 필요한 라이브러리를 추가합니다.
+       * pytest: Python의 표준 테스트 프레임워크.
+       * pytest-cov: 테스트 커버리지를 측정하는 플러그인.
+       * pytest-asyncio: asyncio 기반의 비동기 코드를 테스트하기 위한 플러그인.
+       * httpx: FastAPI 애플리케이션을 테스트하기 위한 최신 비동기 HTTP
+         클라이언트.
+       * ruff: 매우 빠른 코드 린터(Linter) 및 포맷터(Formatter).
+
+   2. 테스트 디렉토리 구조 생성:
+       * 프로젝트 루트에 tests 디렉토리를 생성합니다. 이 안에 각 서비스별
+         테스트를 분리하여 관리합니다.
+
+   1         /tests
+   2         ├── /integration
+   3         │   ├── /test_api_gateway.py
+   4         │   └── /test_market_data_service.py
+   5         └── /unit
+   6             ├── /test_premium_calculation.py
+   7             └── /test_liquidation_simulation.py
+
+   3. 설정 파일 구성:
+       * 프로젝트 루트에 pyproject.toml 파일을 생성하여 pytest와 ruff의 설정을
+         통합 관리합니다.
+
+    1         # pyproject.toml
+    2 
+    3         [tool.pytest.ini_options]
+    4         minversion = "6.0"
+    5         addopts = "-ra -q"
+    6         testpaths = [
+    7             "tests",
+    8         ]
+    9         pythonpath = "backend" # `backend` 디렉토리를 import 경로에
+      추가
+   10 
+   11         [tool.ruff]
+   12         line-length = 88
+   13         select = ["E", "F", "W", "I"] # 기본적인 린트 규칙 선택
+   14 
+   15         [tool.ruff.format]
+   16         quote-style = "double"
+
+  2단계: 단위 테스트(Unit Test) 작성 (핵심 로직부터)
+
+  가장 먼저 테스트할 대상은 외부 의존성(DB, API 호출)이 없는 순수한 비즈니스
+  로직입니다.
+
+   1. 대상 선정:
+       * market-data-service의 김치 프리미엄 계산 로직.
+       * liquidation-service의 청산 시뮬레이션 계산 로직.
+       * 각종 데이터 정규화 및 변환 유틸리티 함수.
+
+   2. 테스트 코드 작성 (예시):
+       * tests/unit/test_premium_calculation.py 파일을 생성합니다.
+       * 순수한 계산 로직을 테스트하는 함수를 작성합니다.
+
+    1         # tests/unit/test_premium_calculation.py
+    2 
+    3         # 테스트할 함수 (가상)
+    4         def calculate_premium(domestic_price, global_price, 
+      exchange_rate):
+    5             if not all([domestic_price, global_price,
+      exchange_rate]) or global_price == 0:
+    6                 return 0.0
+    7             global_price_krw = global_price * exchange_rate
+    8             return ((domestic_price - global_price_krw) /
+      global_price_krw) * 100
+    9 
+   10         def test_calculate_premium_positive():
+   11             """프리미엄이 양수일 경우를 테스트합니다."""
+   12             # Arrange (준비)
+   13             upbit_price = 52000000
+   14             binance_price = 40000
+   15             rate = 1300
+   16 
+   17             # Act (실행)
+   18             premium = calculate_premium(upbit_price, binance_price,
+      rate)
+   19 
+   20             # Assert (검증)
+   21             assert premium == 0.0 # 52,000,000 / (40000 * 1300) - 1
+      = 0
+   22 
+   23         def test_calculate_premium_negative():
+   24             """역프리미엄(음수)일 경우를 테스트합니다."""
+   25             # Arrange
+   26             upbit_price = 51000000
+   27             binance_price = 40000
+   28             rate = 1300
+   29 
+   30             # Act
+   31             premium = calculate_premium(upbit_price, binance_price,
+      rate)
+   32 
+   33             # Assert
+   34             assert premium < 0
+   35             assert round(premium, 2) == -1.92 # (51M - 52M) / 52M
+
+  3단계: 통합 테스트(Integration Test) 작성 (API 엔드포인트)
+
+  각 서비스가 API 요청을 올바르게 처리하는지 검증합니다.
+
+   1. `httpx.AsyncClient` 사용: FastAPI의 TestClient와 유사하게, 실행 중인 서버
+      없이도 API를 테스트할 수 있습니다.
+
+   2. 테스트 코드 작성 (예시):
+       * tests/integration/test_market_data_service.py 파일을 생성합니다.
+       * market-data-service의 /health 엔드포인트를 테스트합니다.
+
+    1         # tests/integration/test_market_data_service.py
+    2         import pytest
+    3         from httpx import AsyncClient
+    4         from backend.market-data-service.main import app # FastAPI 
+      앱 임포트
+    5 
+    6         @pytest.mark.asyncio
+    7         async def test_health_check():
+    8             """/health 엔드포인트가 200 OK와 정상 응답을 반환하는지
+      테스트합니다."""
+    9             async with AsyncClient(app=app, base_url="http://test")
+      as client:
+   10                 response = await client.get("/health")
+   11 
+   12             assert response.status_code == 200
+   13             json_response = response.json()
+   14             assert json_response["status"] == "healthy"
+   15             assert json_response["service"] ==
+      "market-data-service"
+
+  4단계: 자동화 및 지속적 통합 (CI)
+
+   1. 테스트 실행 스크립트 생성:
+       * 프로젝트 루트에 run_checks.sh 스크립트를 만들어 모든 검사를 한 번에
+         실행할 수 있게 합니다.
+
+    1         #!/bin/bash
+    2         set -e # 하나라도 실패하면 즉시 중단
+    3 
+    4         echo "Running formatter..."
+    5         ruff format backend tests
+    6 
+    7         echo "Running linter..."
+    8         ruff check backend tests
+    9 
+   10         echo "Running tests with coverage..."
+   11         pytest --cov=backend --cov-report=term-missing
+
+   2. GitHub Actions 워크플로우 설정:
+       * .github/workflows/ci.yml 파일을 생성하여, 코드가 푸시될 때마다 자동으로
+         모든 검사를 실행하도록 설정합니다.
+
+    1         name: Python CI
+    2 
+    3         on: [push, pull_request]
+    4 
+    5         jobs:
+    6           build:
+    7             runs-on: ubuntu-latest
+    8             steps:
+    9             - uses: actions/checkout@v3
+   10             - name: Set up Python
+   11               uses: actions/setup-python@v3
+   12               with:
+   13                 python-version: '3.10'
+   14             - name: Install dependencies
+   15               run: |
+   16                 python -m pip install --upgrade pip
+   17                 pip install -r backend/requirements.txt
+   18             - name: Run checks
+   19               run: |
+   20                 chmod +x ./run_checks.sh
+   21                 ./run_checks.sh
+
+  기대 효과
+
+   * 코드 품질 향상: ruff가 일관된 코드 스타일을 강제하고 잠재적인 오류를 미리
+     찾아줍니다.
+   * 버그 조기 발견: 새로운 코드나 수정된 코드가 기존 기능에 미치는 영향을
+     테스트가 자동으로 검증하여, 프로덕션 환경에 배포되기 전에 버그를 잡을 수
+     있습니다.
+   * 안정적인 리팩토링: 테스트 코드가 안전망 역할을 해주므로, 개발자가 자신감을
+     갖고 코드 구조를 개선(리팩토링)할 수 있습니다.
+   * 협업 효율 증대: 모든 팀원이 동일한 코드 품질 기준을 따르게 되며, CI를 통해
+     코드 리뷰 과정에서 품질 관련 논의를 줄일 수 있습니다.
+
+
+
+     

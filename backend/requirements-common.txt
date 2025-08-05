@@ -1,0 +1,11 @@
+# 공통 의존성 패키지 (모든 마이크로서비스에서 사용)
+fastapi
+uvicorn[standard]==0.24.0
+aiohttp>=3.9.1
+requests==2.31.0
+websockets==11.0.3
+redis==5.0.1
+python-json-logger==2.0.7
+pydantic
+python-dateutil>=2.8.0
+python-dotenv>=1.0.0

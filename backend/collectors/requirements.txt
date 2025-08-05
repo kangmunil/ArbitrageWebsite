@@ -1,0 +1,21 @@
+# CCXT 기반 9개 거래소 가격 수집 시스템 의존성
+
+# CCXT 라이브러리 (WebSocket 지원)
+ccxt[pro]>=4.2.0
+
+# 비동기 HTTP 클라이언트
+aiohttp>=3.9.0
+
+# 데이터베이스 관련
+SQLAlchemy>=2.0.0
+PyMySQL>=1.1.0
+
+# 시간/날짜 처리
+python-dateutil>=2.8.0
+
+# 로깅 및 설정
+python-dotenv>=1.0.0
+
+# 수치 계산
+
+# 기타 유틸리티
